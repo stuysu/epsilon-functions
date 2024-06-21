@@ -22,7 +22,7 @@ serve(async () => {
   })
 
   return new Response(
-    `"Hello from Edge Functions! (edited via git) (AND WEBHOOKS THIS TIME)"`,
+    `"Hello from Edge Functions! (edited via git) (AND WEBHOOKS THIS TIM)"`,
     { headers: { "Content-Type": "application/json" } },
   )
 })
