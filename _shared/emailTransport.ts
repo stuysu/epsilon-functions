@@ -7,7 +7,10 @@ const Transport = nodemailer.createTransport({
     auth: {
         user: Deno.env.get('NODEMAILER_EMAIL')!,
         pass: Deno.env.get('NODEMAILER_PASSWORD')!
-    }
+    },
+    connectionTimeout: 5000,
+    socketTimeout: 5000,
+    greetingTimeout: 5000
 });
 
 export default Transport;

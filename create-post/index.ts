@@ -108,7 +108,7 @@ Deno.serve(async (req : Request) => {
                     text: emailText,
                 })
             } catch (error) {
-                console.log(error);
+                console.error(`Failed to send email: ` + error);
             }
         })
 

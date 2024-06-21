@@ -152,7 +152,7 @@ This email is to let you know that ${siteUser.first_name} ${siteUser.last_name} 
                         text: emailBody,
                     })
                 } catch (error) {
-                    console.log(error);
+                    console.error(`Failed to send email: ` + error);
                 }
             }
         })

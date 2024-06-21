@@ -125,7 +125,7 @@ Room: ${oldMeetingData[0].rooms?.name || "Virtual"}`
                     text: emailText,
                 })
             } catch (error) {
-                console.log(error);
+                console.error(`Failed to send email: ` + error);
             }
         })
 
