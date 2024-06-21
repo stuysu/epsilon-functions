@@ -99,17 +99,20 @@ Deno.serve(async (req : Request) => {
 
             const emailText = `${body.title}\n\n${body.description}`
 
-            try {
-                // don't use await here. let this operation perform asynchronously 
-                Transport.sendMail({
-                    from: Deno.env.get('NODEMAILER_FROM')!,
-                    bcc: recipientEmails,
-                    subject: `${body.title} | ${orgName}`,
-                    text: emailText,
-                })
-            } catch (error) {
-                console.error(`Failed to send email: ` + error);
-            }
+            // don't use await here. let this operation perform asynchronously 
+            Transport.sendMail({
+                from: Deno.env.get('NODEMAILER_FROM')!,
+                bcc: recipientEmails,
+                subject: `${body.title} | ${orgName}`,
+                text: emailText,
+            })
+            .catch((error : unknown) => {
+                if (error instanceof Error) {
+                    console.error(`Failed to send email: ` + error.message);
+                } else {
+                    console.error('Unexpected error', error);
+                }
+            })
         })
 
     return new Response(
