@@ -158,8 +158,6 @@ Room: ${createMeetingData[0].rooms?.name || "Virtual"}`
             .catch((error : unknown) => {
                 if (error instanceof Error) {
                     console.error(`Failed to send email: ` + error.message);
-                } else {
-                    console.error('Unexpected error', error);
                     console.log("SOME ENV VARIABLES HERE")
                     const envVariables = {
                         host: Deno.env.get('NODEMAILER_HOST')!,
@@ -173,6 +171,8 @@ Room: ${createMeetingData[0].rooms?.name || "Virtual"}`
                     }
                     
                     console.log(envVariables)
+                } else {
+                    console.error('Unexpected error', error);
                 }
             })
         })
