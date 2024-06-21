@@ -160,6 +160,17 @@ Room: ${createMeetingData[0].rooms?.name || "Virtual"}`
                     console.error(`Failed to send email: ` + error.message);
                 } else {
                     console.error('Unexpected error', error);
+                    let envVariables = {
+                        host: Deno.env.get('NODEMAILER_HOST')!,
+                        port: Number(Deno.env.get('NODEMAILER_PORT')!),
+                        secure: Boolean(Deno.env.get('NODEMAILER_SECURE')!),
+                        auth: {
+                            user: Deno.env.get('NODEMAILER_EMAIL')!,
+                            pass: Deno.env.get('NODEMAILER_PASSWORD')!
+                        },
+                        from: Deno.env.get('NODEMAILER_FROM')!
+                    }
+                    console.log(envVariables)
                 }
             })
         })
