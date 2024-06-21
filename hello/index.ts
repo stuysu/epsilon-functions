@@ -6,7 +6,7 @@ import { serve } from "https://deno.land/std@0.177.1/http/server.ts"
 
 serve(async () => {
   return new Response(
-    `"Hello from Edge Functions! (via webhooks this time)"`,
+    `"Hello from Edge Functions! (changed from webhook)"`,
     { headers: { "Content-Type": "application/json" } },
   )
 })
