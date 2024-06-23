@@ -1,5 +1,6 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import corsHeaders from '../_shared/cors.ts';
+import supabaseAdmin from '../_shared/supabaseAdmin.ts';
 
 type BodyType = {
     name: string,
@@ -60,7 +61,6 @@ Deno.serve(async (req : Request) => {
 
     const { data: orgData, error: orgCreateError } = await supabaseClient.from('organizations')
         .insert({
-            creator_id: siteUser.id,
             ...body
         })
         .select(`
@@ -69,6 +69,19 @@ Deno.serve(async (req : Request) => {
     
     if (orgCreateError || !orgData || !orgData.length) {
         return new Response("Error creating organization.", { status: 500 });
+    }
+
+    /* CREATE CREATOR MEMBERSHIP FOR USER */
+    const { error: membershipError } = await supabaseAdmin.from("memberships")
+        .insert({
+            organization_id: orgData[0].id,
+            user_id: siteUser.id,
+            role: "CREATOR",
+            active: true
+        });
+    
+    if (membershipError) {
+        return new Response("Error creating membership. Please contact it@stuysu.org as soon as possible.", { status: 500 });
     }
 
     // success!
