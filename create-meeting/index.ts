@@ -62,7 +62,6 @@ Deno.serve(async (req : Request) => {
         return new Response("User is unauthorized.", { status: 401 });
     }
 
-    const siteUser = verifiedUsers[0];
     const bodyJson = await req.json();
     const body : BodyType = {
         organization_id: bodyJson.organization_id,
