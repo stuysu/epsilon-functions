@@ -126,7 +126,7 @@ There is a new message for ${orgName}.
 
 ${siteUser.first_name} ${siteUser.last_name}: ${content}
 
-You can view this message at ${Deno.env.get('SITE_URL')}/${orgUrl}/admin/org-edits.
+You can view this message at ${Deno.env.get('SITE_URL')}/${orgUrl}/admin/messages.
 
 If you have any questions, please email clubpub@stuysu.org.
 
