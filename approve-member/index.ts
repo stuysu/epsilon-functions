@@ -54,7 +54,8 @@ Deno.serve(async (req : Request) => {
     /* update member */
     type omtyp = {
         organizations: {
-            id: number
+            id: number,
+            name: string
         }
     }
     const { data: memberData, error: updateMemberError } = await supabaseClient
@@ -63,7 +64,8 @@ Deno.serve(async (req : Request) => {
             .eq("id", member_id)
             .select(`
                 organizations!inner (
-                    id
+                    id,
+                    name
                 )
             `)
             .returns<omtyp[]>();
@@ -145,6 +147,7 @@ If you need any technical assistance, email us at it@stuysu.org. If you have gen
 
     /* ALSO CHECK IF CLUB IS PENDING AND SHOULD IT BE UNLOCKED */
     const orgId = memberData[0].organizations.id;
+    const orgName = memberData[0].organizations.name;
 
     const { data: orgData, error: orgDataError } = await supabaseClient.from('organizations')
         .select(`
@@ -172,9 +175,69 @@ If you need any technical assistance, email us at it@stuysu.org. If you have gen
         }
 
         if (org.state === "LOCKED" && org.memberships.filter(m => m.active).length >= required_members) {
-            await supabaseAdmin.from('organizations')
+            /* SEND ORG ADMINS AN EMAIL ABOUT THIS */
+            type orgAdminType = {
+                id: number,
+                role: 'ADMIN' | 'CREATOR',
+                users: {
+                    first_name: string,
+                    email: string
+                }
+            };
+
+            /* asynchronously email admins to prevent function from hanging on client */
+            supabaseClient.from('memberships')
+                .select(`
+                    id,
+                    role,
+                    users!inner (
+                        first_name,
+                        email
+                    )
+                `)
+                .eq('organization_id', orgId)
+                .in('role', ['ADMIN', 'CREATOR'])
+                .returns<orgAdminType[]>()
+                .then(resp => {
+                    const { data: orgAdmins, error: orgAdminError } = resp;
+                    if (orgAdminError || !orgAdmins || !orgAdmins.length) {
+                        console.log("Unable to email org admins.");
+                        return;
+                    }
+
+                    for (const admin of orgAdmins) {
+                        const emailBody = `Hi ${admin.users.first_name}!
+
+You are receiving this email because your organization ${orgName} has been approved and unlocked.
+
+You can begin creating meetings, making posts, and your organization will be displayed on the club catalog.
+
+We hope you enjoy your club experience at Stuy!
+
+With Love,
+
+The Epsilon Team
+`
+
+                        Transport.sendMail({
+                            from: Deno.env.get('NODEMAILER_FROM')!,
+                            to: admin.users.email,
+                            subject: `Organization Unlocked ${orgName} | Epsilon`,
+                            text: emailBody,
+                        })
+                        .catch((error : unknown) => {
+                            if (error instanceof Error) {
+                                console.error(`Failed to send email: ` + error.message);
+                            } else {
+                                console.error('Unexpected error', error);
+                            }
+                        });
+                    }
+                })
+
+                await supabaseAdmin.from('organizations')
                 .update({ state: 'UNLOCKED' })
-                .eq('id', orgId);
+                .eq('id', orgId)
         }
         
     }
