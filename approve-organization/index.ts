@@ -53,7 +53,7 @@ Deno.serve(async (req : Request) => {
     }
 
     const { data: orgData, error: approveError } = await supabaseClient.from('organizations')
-        .update({ state: 'UNLOCKED' })
+        .update({ state: 'LOCKED' })
         .eq('id', organization_id)
         .select(`
             name

@@ -1,6 +1,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import Transport from '../_shared/emailTransport.ts';
 import corsHeaders from '../_shared/cors.ts';
+import supabaseAdmin from '../_shared/supabaseAdmin.ts';
 
 type BodyType = {
     member_id: number
@@ -51,13 +52,24 @@ Deno.serve(async (req : Request) => {
     /* RLS takes care of any permissions */
 
     /* update member */
-    const { error: updateMemberError } = await supabaseClient
+    type omtyp = {
+        organizations: {
+            id: number
+        }
+    }
+    const { data: memberData, error: updateMemberError } = await supabaseClient
             .from("memberships")
             .update({ active: true })
-            .eq("id", member_id);
+            .eq("id", member_id)
+            .select(`
+                organizations!inner (
+                    id
+                )
+            `)
+            .returns<omtyp[]>();
 
     /* send error if failed to join organization */
-    if (updateMemberError) {
+    if (updateMemberError || !memberData || !memberData.length) {
         return new Response("Error updating member.", { status: 422 }) // unprocessable entity
     }
 
@@ -130,6 +142,42 @@ If you need any technical assistance, email us at it@stuysu.org. If you have gen
                 }
             });
         })
+
+    /* ALSO CHECK IF CLUB IS PENDING AND SHOULD IT BE UNLOCKED */
+    const orgId = memberData[0].organizations.id;
+
+    const { data: orgData, error: orgDataError } = await supabaseClient.from('organizations')
+        .select(`
+            state,
+            memberships!inner (
+                active
+            )
+        `)
+        .eq('id', orgId);
+    
+    if (orgData && orgData.length && !orgDataError) {
+        const org = orgData[0];
+
+        type styp = {
+            required_members: number
+        }
+        const { data: siteSettings } = await supabaseAdmin.from('settings')
+            .select(`
+                required_members
+            `)
+            .returns<styp[]>();
+        let required_members = 0;
+        if (siteSettings) {
+            required_members = siteSettings[0].required_members;
+        }
+
+        if (org.state === "LOCKED" && org.memberships.filter(m => m.active).length >= required_members) {
+            await supabaseAdmin.from('organizations')
+                .update({ state: 'UNLOCKED' })
+                .eq('id', orgId);
+        }
+        
+    }
 
     return new Response(
         JSON.stringify({
