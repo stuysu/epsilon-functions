@@ -75,5 +75,5 @@ router.get("/", async (context: Context) => {
 app.use(router.routes());
 app.use(router.allowedMethods());
 
-console.log(`Server running on http://localhost:${PORT}`);
+console.log(`Server running on ${domain}:${PORT}`);
 await app.listen({ port: PORT });
