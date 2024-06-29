@@ -14,7 +14,9 @@ config({ export: true });
 const GOOGLE_CLIENT_ID = Deno.env.get("GOOGLE_CLIENT_ID")!;
 const GOOGLE_CLIENT_SECRET = Deno.env.get("GOOGLE_CLIENT_SECRET")!;
 const PORT = 3001;
-const REDIRECT_URI = `http://localhost:${PORT}`;
+const urlElements = Deno.env.get("API_EXTERNAL_URL")!.split(":");
+const domain = urlElements[0] + ":" + urlElements[1];
+const REDIRECT_URI = `${domain}:${PORT}`;
 
 const oauth2Client = new OAuth2Client(
   GOOGLE_CLIENT_ID,
