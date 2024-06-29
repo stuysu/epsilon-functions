@@ -3,6 +3,7 @@
 // This enables autocomplete, go to definition, etc.
 
 import { serve } from "https://deno.land/std@0.177.1/http/server.ts"
+import auth from "../_shared/google/oAuth2.ts"
 
 serve(async () => {
   return new Response(
