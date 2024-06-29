@@ -3,7 +3,6 @@ import Transport from '../_shared/emailTransport.ts';
 import corsHeaders from '../_shared/cors.ts';
 
 import { initOrgCalendar } from '../_shared/google/calendar.ts';
-import { Body } from 'https://deno.land/x/oak@v16.1.0/body.ts';
 
 type BodyType = {
     organization_id: number
