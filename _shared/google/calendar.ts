@@ -36,6 +36,45 @@ export const initOrgCalendar = async (orgId : number) => {
         timeZone: "America/New_York",
     };
 
+    const response = await CalendarApi.calendars.insert({
+        requestBody: calData,
+        auth
+    }) as any;
+
+    const { error: insertError } = await supabaseAdmin.from("googlecalendars")
+        .insert({
+            org_url: orgData.url,
+            calendar_id: response.data.id
+        });
+    
+    if (insertError) {
+        throw new Error("Failed to insert calendar into database");
+    }
+
+    /* share with members */
+    supabaseAdmin.from("memberships")
+        .select(`
+            id,
+            users!inner (
+                email
+            )    
+        `)
+        .eq('organization_id', orgId)
+        .returns<{ id: number, users: { email: string } }[]>()
+        .then(resp => {
+            const { data: orgMembers, error: orgMemberError } = resp;
+
+            if (orgMemberError || !orgMembers || !orgMembers.length) {
+                console.log("Failed to add organization members to calendar.");
+                return;
+            }
+
+            // add members here
+            orgMembers.map(member => shareCalendar(response.data.id, member.users.email))
+        });
+        
+
+    return response.data.id;
 }
 
 export async function shareCalendar(calendarId: string, email: string) {
