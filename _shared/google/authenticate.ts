@@ -1,6 +1,6 @@
 /* 
 run this with settings
-GOOGLE_CLIENT_ID=<> GOOGLE_CLIENT_SECRET=<> SUPABASE_URL=http://localhost:8000 SUPABASE_SERVICE_ROLE_KEY=<> deno run --allow-net --allow-env --allow-read --unstable authenticate.ts
+GOOGLE_CLIENT_ID=<> GOOGLE_CLIENT_SECRET=<> SUPABASE_URL=http://localhost:8000 SUPABASE_SERVICE_ROLE_KEY=<> API_EXTERNAL_URL=<> deno run --allow-net --allow-env --allow-read --unstable authenticate.ts
 */
 
 import { Application, Router, Context } from "https://deno.land/x/oak/mod.ts";
