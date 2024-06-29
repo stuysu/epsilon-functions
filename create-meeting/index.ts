@@ -4,6 +4,8 @@ import Transport from '../_shared/emailTransport.ts';
 
 import { datetime } from "https://deno.land/x/ptera/mod.ts";
 
+import { createCalendarEvent } from '../_shared/google/calendar.ts';
+
 type BodyType = {
     organization_id: number,
     title: string,
@@ -161,7 +163,49 @@ Room: ${createMeetingData[0].rooms?.name || "Virtual"}`
                     console.error('Unexpected error', error);
                 }
             })
-        })
+        });
+    
+    /* asynchronously create calendar event */
+    type ctyp = {
+        id: number,
+        name: string,
+        url: string,
+        googlecalendars: {
+            id: number,
+            calendar_id: string
+        }
+    }
+
+    const { data: orgData, error: orgError } = await supabaseClient.from('organizations')
+        .select(`
+            id,
+            name,
+            googlecalendars!inner (
+                id,
+                calendar_id
+            )    
+        `)
+        .eq('id', body.organization_id)
+        .returns<ctyp[]>();
+
+    if (orgError || !orgData || !orgData.length) {
+        console.log("Error fetching organization data.");
+    } else {
+        createCalendarEvent(
+            orgData[0].googlecalendars.calendar_id,
+            {
+                name: body.title,
+                description: body.description,
+                start: createMeetingData[0].start_time,
+                end: createMeetingData[0].end_time,
+                location: createMeetingData[0].rooms?.name || "Virtual",
+                source: {
+                    title: `Meeting by ${orgData[0].name} | StuyActivities`,
+			        url: `${Deno.env.get('SITE_URL')}/${orgData[0].url}/meetings`
+                }
+            } 
+        );
+    }
 
     return new Response(
         JSON.stringify({

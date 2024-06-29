@@ -6,14 +6,15 @@ GOOGLE_CLIENT_ID=<> GOOGLE_CLIENT_SECRET=<> SUPABASE_URL=http://localhost:8000 S
 import { Application, Router, Context } from "https://deno.land/x/oak/mod.ts";
 import { config } from "https://deno.land/x/dotenv/mod.ts";
 import { OAuth2Client } from "npm:google-auth-library";
-import supabaseAdmin from "./supabaseAdmin.ts";
+import supabaseAdmin from "../supabaseAdmin.ts";
 
 // Load environment variables
 config({ export: true });
 
 const GOOGLE_CLIENT_ID = Deno.env.get("GOOGLE_CLIENT_ID")!;
 const GOOGLE_CLIENT_SECRET = Deno.env.get("GOOGLE_CLIENT_SECRET")!;
-const REDIRECT_URI = "http://localhost:3001";
+const PORT = 3001;
+const REDIRECT_URI = `http://localhost:${PORT}`;
 
 const oauth2Client = new OAuth2Client(
   GOOGLE_CLIENT_ID,
@@ -72,5 +73,5 @@ router.get("/", async (context: Context) => {
 app.use(router.routes());
 app.use(router.allowedMethods());
 
-console.log(`Server running on http://localhost:3001`);
-await app.listen({ port: 3001 });
+console.log(`Server running on http://localhost:${PORT}`);
+await app.listen({ port: PORT });

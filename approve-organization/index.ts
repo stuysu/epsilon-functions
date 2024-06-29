@@ -2,6 +2,9 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import Transport from '../_shared/emailTransport.ts';
 import corsHeaders from '../_shared/cors.ts';
 
+import { initOrgCalendar } from '../_shared/google/calendar.ts';
+import { Body } from 'https://deno.land/x/oak@v16.1.0/body.ts';
+
 type BodyType = {
     organization_id: number
 }
@@ -125,7 +128,17 @@ For technical concerns, please contact it@stuysu.org. For general questions abou
                     }
                 })
             }
-        })
+        });
+    
+     /* asynchronously create a google calendar */
+    initOrgCalendar(organization_id)
+    .catch((error : unknown) => {
+        if (error instanceof Error) {
+            console.error(`Failed to create calendar: ` + error.message);
+        } else {
+            console.error('Unexpected error', error);
+        }
+    });
 
     return new Response(
         JSON.stringify({
