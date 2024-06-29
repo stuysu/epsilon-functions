@@ -1,4 +1,4 @@
-import { google } from "npm:googleapis";
+
 import supabaseAdmin from "../supabaseAdmin.ts";
 
 const auth = new google.auth.OAuth2(
@@ -64,6 +64,10 @@ const fakeApiCall = async () => {
 	}
 };
 
+
+fakeApiCall();
+
+setInterval(fakeApiCall, 1000 * 60); // 1 minute
 
 export default auth;
 
