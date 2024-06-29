@@ -1,4 +1,4 @@
-
+import { google } from "npm:googleapis";
 import supabaseAdmin from "../supabaseAdmin.ts";
 
 const auth = new google.auth.OAuth2(
