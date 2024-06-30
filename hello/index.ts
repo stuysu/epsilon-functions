@@ -3,7 +3,7 @@
 // This enables autocomplete, go to definition, etc.
 
 import { serve } from "https://deno.land/std@0.177.1/http/server.ts"
-import { google } from "npm:googleapis";
+import { google } from "https://esm.sh/googleapis@140.0.1";
 
 serve(async () => {
   return new Response(
