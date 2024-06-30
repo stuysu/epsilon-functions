@@ -4,7 +4,7 @@ import Transport from '../_shared/emailTransport.ts';
 
 import { datetime } from "https://deno.land/x/ptera/mod.ts";
 
-import { createCalendarEvent } from '../_shared/google/calendar.ts';
+// import { createCalendarEvent } from '../_shared/google/calendar.ts'; doesn't work
 
 type BodyType = {
     organization_id: number,
@@ -165,7 +165,8 @@ Room: ${createMeetingData[0].rooms?.name || "Virtual"}`
             })
         });
     
-    /* asynchronously create calendar event */
+    /* asynchronously create calendar event
+    [DOESN'T WORK FOR NOW]
     type ctyp = {
         id: number,
         name: string,
@@ -176,6 +177,7 @@ Room: ${createMeetingData[0].rooms?.name || "Virtual"}`
         }
     }
 
+    
     const { data: orgData, error: orgError } = await supabaseClient.from('organizations')
         .select(`
             id,
@@ -206,6 +208,7 @@ Room: ${createMeetingData[0].rooms?.name || "Virtual"}`
             } 
         );
     }
+    */
 
     return new Response(
         JSON.stringify({
