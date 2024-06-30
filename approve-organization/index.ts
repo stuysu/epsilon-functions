@@ -2,7 +2,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import Transport from '../_shared/emailTransport.ts';
 import corsHeaders from '../_shared/cors.ts';
 
-import { initOrgCalendar } from '../_shared/google/calendar.ts';
+// import { initOrgCalendar } from '../_shared/google/calendar.ts'; REMOVE FOR NOW: DOESN'T WORK IN PRODUCTION
 
 type BodyType = {
     organization_id: number
@@ -129,7 +129,8 @@ For technical concerns, please contact it@stuysu.org. For general questions abou
             }
         });
     
-     /* asynchronously create a google calendar */
+     /* asynchronously create a google calendar
+    REMOVE FOR NOW: DOESN'T WORK IN PRODUCTION 
     initOrgCalendar(organization_id)
     .catch((error : unknown) => {
         if (error instanceof Error) {
@@ -138,6 +139,7 @@ For technical concerns, please contact it@stuysu.org. For general questions abou
             console.error('Unexpected error', error);
         }
     });
+    */
 
     return new Response(
         JSON.stringify({
