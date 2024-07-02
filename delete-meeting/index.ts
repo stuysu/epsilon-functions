@@ -105,8 +105,8 @@ Deno.serve(async (req : Request) => {
                 recipientEmails.push(member.users.email);
             }
 
-            const startTime = datetime(oldMeetingData[0].start_time).toZonedTime("America/New_York").format("MMMM, YYYY, h:mm a");
-            const endTime = datetime(oldMeetingData[0].end_time).toZonedTime("America/New_York").format("MMMM, YYYY, h:mm a");
+            const startTime = datetime(oldMeetingData[0].start_time).toZonedTime("America/New_York").format("MMMM d, YYYY, h:mm a");
+            const endTime = datetime(oldMeetingData[0].end_time).toZonedTime("America/New_York").format("MMMM d, YYYY, h:mm a");
 
             const emailText = `You are receiving this email because you are a member of ${orgName}
 This email is to let you know that the meeting listed below is *CANCELED*
