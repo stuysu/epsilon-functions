@@ -3,6 +3,7 @@ import corsHeaders from '../_shared/cors.ts';
 import Transport from '../_shared/emailTransport.ts';
 
 import { datetime } from "https://deno.land/x/ptera/mod.ts";
+import { isValidMeeting } from '../_shared/utils.ts';
 
 // import { createCalendarEvent } from '../_shared/google/calendar.ts'; doesn't work
 
@@ -75,7 +76,14 @@ Deno.serve(async (req : Request) => {
         is_public: bodyJson.is_public
     }
 
-    /* removed backend validation because it already exists in RLS */
+    /* validation */
+    // no need to check if virtual
+    if (body.room_id) {
+        const isValid = await isValidMeeting(body.start_time, body.end_time, body.room_id);
+        if (!isValid) {
+            return new Response("Invalid meeting time or room.", { status: 400 });
+        }
+    }
 
     type rtyp = {
         id: number,

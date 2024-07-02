@@ -4,6 +4,8 @@ import Transport from '../_shared/emailTransport.ts';
 
 import { datetime } from "https://deno.land/x/ptera/mod.ts";
 
+import { isValidMeeting } from '../_shared/utils.ts';
+
 type BodyType = {
     title: string,
     description: string,
@@ -73,6 +75,13 @@ Deno.serve(async (req : Request) => {
     }
 
     /* removed backend validation because it already exists in RLS */
+    
+    if (body.room_id) {
+        const isValid = await isValidMeeting(body.start_time, body.end_time, body.room_id, bodyJson.id);
+        if (!isValid) {
+            return new Response("Invalid meeting time or room.", { status: 400 });
+        }
+    }
 
     type rtyp = {
         id: number,
