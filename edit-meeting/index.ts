@@ -80,18 +80,16 @@ Deno.serve(async (req: Request) => {
 
     /* removed backend validation because it already exists in RLS */
 
-    if (body.room_id) {
-        const isValid = await isValidMeeting(
-            body.start_time,
-            body.end_time,
-            body.room_id,
-            bodyJson.id,
-        );
-        if (!isValid) {
-            return new Response('Invalid meeting time or room.', {
-                status: 400,
-            });
-        }
+    const isValid = await isValidMeeting(
+        body.start_time,
+        body.end_time,
+        body.room_id,
+        bodyJson.id,
+    );
+    if (!isValid) {
+        return new Response('Invalid meeting time or room.', {
+            status: 400,
+        });
     }
 
     type rtyp = {
