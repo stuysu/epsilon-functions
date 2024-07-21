@@ -73,7 +73,7 @@ Deno.serve(async (req: Request) => {
         `);
 
     if (orgCreateError || !orgData || !orgData.length) {
-        return new Response('Error creating organization.', { status: 500 });
+        return new Response(`Error creating organization. \`${(orgCreateError?.message || orgCreateError?.code || "Unknown error. Contact it@stuysu.org.")}\``, { status: 500 });
     }
 
     /* CREATE CREATOR MEMBERSHIP FOR USER */
