@@ -6,7 +6,7 @@ import { serve } from 'https://deno.land/std@0.177.1/http/server.ts';
 import Transport from '../_shared/emailTransport.ts';
 
 serve(async () => {
-    await Transport.sendMail({
+    Transport.sendMail({
                 from: Deno.env.get('NODEMAILER_FROM')!,
                 bcc: ["rsim40@stuy.edu"],
                 subject: `Test bcc`,
@@ -21,7 +21,7 @@ serve(async () => {
                 });
     
     return new Response(
-        `"Hello from Edge Functions! (edited)"`,
+        `"Hello from Edge Functions! (edited 2x)"`,
         { headers: { 'Content-Type': 'application/json' } },
     );
 });
