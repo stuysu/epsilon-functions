@@ -19,7 +19,6 @@ serve(async () => {
                         console.error('Unexpected error', error);
                     }
                 });
-        });
     
     return new Response(
         `"Hello from Edge Functions!"`,
