@@ -1,5 +1,16 @@
 import supabaseAdmin from './supabaseAdmin.ts';
+import Transport from './emailTransport.ts';
+
 const MIN_LENGTH = 30; // minutes
+
+type mtyp = {
+    users: {
+        first_name: string;
+        email: string;
+        is_faculty: boolean;
+    };
+    organizations: { name: string };
+};
 
 export const isValidMeeting = async (
     start_time: string,
@@ -82,3 +93,46 @@ export const isValidMeeting = async (
 
     return true;
 };
+
+export const sendOrgEmail = async (orgId: number, subject: string, text: string, notifyFaculty?: boolean) => {
+    const { data: memberData, error: memberError } = await supabaseAdmin.from('memberships')
+        .select(`
+            users!inner (
+                first_name,
+                email,
+                is_faculty
+            ),
+            organizations!inner (
+                name
+            )
+        `)
+        .eq('organization_id', orgId)
+        .returns<mtyp[]>();
+
+    if (memberError || !memberData || !memberData.length) {
+        console.log('Error fetching members.');
+        return;
+    }
+
+    const recipientEmails = [];
+    const orgName = memberData[0].organizations.name;
+
+    for (const member of memberData) {
+        // do not notify faculty
+        if (member.users.is_faculty && !notifyFaculty) {
+            continue;
+        }
+
+        recipientEmails.push(member.users.email);
+    }
+
+    subject = subject.replace(/{ORG_NAME}/g, orgName);
+    text = text.replace(/{ORG_NAME}/g, orgName);
+
+    await Transport.sendMail({
+        from: Deno.env.get('NODEMAILER_EMAIL')!,
+        bcc: recipientEmails,
+        subject,
+        text,
+    });
+}

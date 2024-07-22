@@ -1,9 +1,8 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import corsHeaders from '../_shared/cors.ts';
-import Transport from '../_shared/emailTransport.ts';
 
 import { datetime } from 'https://deno.land/x/ptera/mod.ts';
-import { isValidMeeting } from '../_shared/utils.ts';
+import { isValidMeeting, sendOrgEmail } from '../_shared/utils.ts';
 
 // import { createCalendarEvent } from '../_shared/google/calendar.ts'; doesn't work
 
@@ -15,6 +14,7 @@ type BodyType = {
     start_time: string;
     end_time: string;
     is_public: boolean;
+    notify_faculty?: boolean;
 };
 
 const returnSelect = `
@@ -77,6 +77,7 @@ Deno.serve(async (req: Request) => {
         start_time: bodyJson.start_time,
         end_time: bodyJson.end_time,
         is_public: bodyJson.is_public,
+        notify_faculty: bodyJson.notify_faculty,
     };
 
     /* time (+ room) validation */
@@ -106,7 +107,15 @@ Deno.serve(async (req: Request) => {
     };
     const { data: createMeetingData, error: createMeetingError } =
         await supabaseClient.from('meetings')
-            .insert(body)
+            .insert({
+                organization_id: body.organization_id,
+                title: body.title,
+                description: body.description,
+                room_id: body.room_id,
+                start_time: body.start_time,
+                end_time: body.end_time,
+                is_public: body.is_public,
+            })
             .select(returnSelect)
             .returns<rtyp[]>();
 
@@ -115,54 +124,14 @@ Deno.serve(async (req: Request) => {
     }
 
     /* asynchronously email all members of organization */
-    type mtyp = {
-        users: {
-            first_name: string;
-            email: string;
-            is_faculty: boolean;
-        };
-        organizations: { name: string };
-    };
-    supabaseClient.from('memberships')
-        .select(`
-            users!inner (
-                first_name,
-                email,
-                is_faculty
-            ),
-            organizations!inner (
-                name
-            )
-        `)
-        .eq('organization_id', body.organization_id)
-        .returns<mtyp[]>()
-        .then((resp) => {
-            const { data: memberData, error: memberError } = resp;
-            if (memberError || !memberData || !memberData.length) {
-                console.log('Error fetching members.');
-                return;
-            }
-
-            const recipientEmails = [];
-            const orgName = memberData[0].organizations.name;
-
-            for (const member of memberData) {
-                // do not notify faculty
-                if (member.users.is_faculty && !bodyJson.notify_faculty) {
-                    continue;
-                }
-
-                recipientEmails.push(member.users.email);
-            }
-
-            const startTime = datetime(createMeetingData[0].start_time)
+    const startTime = datetime(createMeetingData[0].start_time)
                 .toZonedTime('America/New_York').format('MMMM d, YYYY, h:mm a');
             const endTime = datetime(createMeetingData[0].end_time).toZonedTime(
                 'America/New_York',
             ).format('MMMM d, YYYY, h:mm a');
 
-            const emailText =
-                `You are receiving this email because you are a member of ${orgName}
+    const emailText =
+        `You are receiving this email because you are a member of {ORG_NAME}
 This email is to let you know of an upcoming meeting. The details of which are below.
 Title: ${body.title}
 Description: ${body.description}
@@ -170,21 +139,9 @@ Start Date: ${startTime} EST
 End Date: ${endTime} EST
 Room: ${createMeetingData[0].rooms?.name || 'Virtual'}`;
 
-            // don't use await here. let this operation perform asynchronously
-            Transport.sendMail({
-                from: Deno.env.get('NODEMAILER_FROM')!,
-                bcc: recipientEmails,
-                subject: `${orgName} scheduled a meeting | Epsilon`,
-                text: emailText,
-            })
-                .catch((error: unknown) => {
-                    if (error instanceof Error) {
-                        console.error(`Failed to send email: ` + error.message);
-                    } else {
-                        console.error('Unexpected error', error);
-                    }
-                });
-        });
+    const emailSubject = `{ORG_NAME} scheduled a meeting | Epsilon`;
+
+    sendOrgEmail(body.organization_id, emailSubject, emailText, body.notify_faculty);
 
     /* asynchronously create calendar event
     [DOESN'T WORK FOR NOW]
