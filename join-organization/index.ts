@@ -1,5 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import Transport from '../_shared/emailTransport.ts';
+import { sendOrgEmail } from '../_shared/utils.ts';
 import corsHeaders from '../_shared/cors.ts';
 
 type BodyType = {
@@ -112,66 +112,20 @@ Deno.serve(async (req: Request) => {
     }
 
     /* if success, then send email to organization admins */
-    type orgAdminType = {
-        id: number;
-        role: 'ADMIN' | 'CREATOR';
-        users: {
-            first_name: string;
-            email: string;
-        };
-    };
 
-    /* asynchronously email admins to prevent function from hanging on client */
-    supabaseClient.from('memberships')
-        .select(`
-            id,
-            role,
-            users!inner (
-                first_name,
-                email
-            )
-        `)
-        .eq('organization_id', organization_id)
-        .in('role', ['ADMIN', 'CREATOR'])
-        .returns<orgAdminType[]>()
-        .then((resp) => {
-            const { data: orgAdmins, error: orgAdminError } = resp;
-            if (orgAdminError || !orgAdmins || !orgAdmins.length) {
-                console.log('Unable to email org admins.');
-                return;
-            }
-
-            for (const admin of orgAdmins) {
-                const emailBody = `Hi ${admin.users.first_name}!
-        
-You are receiving this message because you are an admin of ${orgData[0].name}
+    /* email admins */
+    const emailBody = `You are receiving this message because you are an admin of ${orgData[0].name}
         
 This email is to let you know that ${siteUser.first_name} ${siteUser.last_name} has requested to join ${
                     orgData[0].name
                 }. You can approve their request at ${
                     Deno.env.get('SITE_URL')
                 }/${orgData[0].url}/admin/member-requests`;
+    const emailSubject = `Someone has requested to join ${
+        orgData[0].name
+    } | Epsilon`;
 
-                /* don't use await here. let this operation perform asynchronously */
-                Transport.sendMail({
-                    from: Deno.env.get('NODEMAILER_FROM')!,
-                    to: admin.users.email,
-                    subject: `Someone has requested to join ${
-                        orgData[0].name
-                    } | Epsilon`,
-                    text: emailBody,
-                })
-                    .catch((error: unknown) => {
-                        if (error instanceof Error) {
-                            console.error(
-                                `Failed to send email: ` + error.message,
-                            );
-                        } else {
-                            console.error('Unexpected error', error);
-                        }
-                    });
-            }
-        });
+    await sendOrgEmail(organization_id, emailSubject, emailBody, false, true);
 
     return new Response(
         JSON.stringify({

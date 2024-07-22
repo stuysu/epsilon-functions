@@ -1,5 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import Transport from '../_shared/emailTransport.ts';
+import { sendOrgEmail } from '../_shared/utils.ts';
 import corsHeaders from '../_shared/cors.ts';
 import { datetime } from 'https://deno.land/x/ptera/mod.ts';
 
@@ -81,7 +81,7 @@ Deno.serve(async (req: Request) => {
     );
 
     if (conflictingMeeting) {
-        await supabaseClient.from('meetings')
+        const { data: orgData, error: orgError } = await supabaseClient.from('meetings')
             .delete()
             .eq('id', conflictingMeeting.meeting_id)
             .select(`
@@ -94,87 +94,23 @@ Deno.serve(async (req: Request) => {
             .returns<
                 { title: string; organizations: { name: string; id: number } }[]
             >()
-            .then(({ data: orgData, error: orgError }) => {
-                if (orgError || !orgData) {
-                    console.error('Failed to fetch org.');
-                    return;
-                }
 
-                const orgName = orgData[0].organizations.name;
-                const orgId = orgData[0].organizations.id;
+            if (orgError || !orgData) {
+                console.error('Failed to fetch org.');
+                return new Response('Failed to notify conflicting rooms.', { status: 500 });
+            }
 
-                type orgAdminType = {
-                    id: number;
-                    role: 'ADMIN' | 'CREATOR';
-                    users: {
-                        first_name: string;
-                        email: string;
-                    };
-                };
+            const orgId = orgData[0].organizations.id;
 
-                /* asynchronously email admins to prevent function from hanging on client */
-                supabaseClient.from('memberships')
-                    .select(`
-                    id,
-                    role,
-                    users!inner (
-                        first_name,
-                        email
-                    )
-                `)
-                    .eq('organization_id', orgId)
-                    .in('role', ['ADMIN', 'CREATOR'])
-                    .returns<orgAdminType[]>()
-                    .then((resp) => {
-                        const { data: orgAdmins, error: orgAdminError } = resp;
-                        if (orgAdminError || !orgAdmins || !orgAdmins.length) {
-                            console.log('Unable to email org admins.');
-                            return;
-                        }
-
-                        // so it@stuysu.org also gets updates
-                        orgAdmins.push({
-                            id: -1,
-                            role: 'ADMIN',
-                            users: {
-                                first_name: 'IT DEP',
-                                email: 'it@stuysu.org',
-                            },
-                        });
-
-                        for (const admin of orgAdmins) {
-                            const emailBody = `Hi ${admin.users.first_name}!
-
-Your meeting, ${orgData[0].title}, has been cancelled by admins due to a conflict with another meeting.
+            const emailBody = `Your meeting, ${orgData[0].title}, has been cancelled by admins due to a conflict with another meeting.
 
 We deeply apologize for the inconvenience, and we hope you are able to schedule it to a different room.
 The Epsilon Team
 `;
 
-                            /* don't use await here. let this operation perform asynchronously */
-                            Transport.sendMail({
-                                from: Deno.env.get('NODEMAILER_FROM')!,
-                                to: admin.users.email,
-                                subject:
-                                    `Meeting removed for ${orgName} | Epsilon`,
-                                text: emailBody,
-                            })
-                                .catch((error: unknown) => {
-                                    if (error instanceof Error) {
-                                        console.error(
-                                            `Failed to send email: ` +
-                                                error.message,
-                                        );
-                                    } else {
-                                        console.error(
-                                            'Unexpected error',
-                                            error,
-                                        );
-                                    }
-                                });
-                        }
-                    });
-            });
+            const emailSubject = `Meeting removed for {ORG_NAME} | Epsilon`;
+
+            await sendOrgEmail(orgId, emailSubject, emailBody, false, true);
     }
 
     const { error: reserveError } = await supabaseClient.from('meetings')

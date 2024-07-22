@@ -4,6 +4,7 @@ import Transport from './emailTransport.ts';
 const MIN_LENGTH = 30; // minutes
 
 type mtyp = {
+    role: "CREATOR" | "ADMIN" | "FACULTY" | "MEMBER";
     users: {
         first_name: string;
         email: string;
@@ -94,9 +95,10 @@ export const isValidMeeting = async (
     return true;
 };
 
-export const sendOrgEmail = async (orgId: number, subject: string, text: string, notifyFaculty?: boolean) => {
+export const sendOrgEmail = async (orgId: number, subject: string, text: string, notifyFaculty?: boolean, onlyAdmin?: boolean) => {
     const { data: memberData, error: memberError } = await supabaseAdmin.from('memberships')
         .select(`
+            role,
             users!inner (
                 first_name,
                 email,
@@ -123,6 +125,13 @@ export const sendOrgEmail = async (orgId: number, subject: string, text: string,
             continue;
         }
 
+        if (
+            onlyAdmin && 
+            (member.role === 'MEMBER' || member.role === 'FACULTY')
+        ) {
+            continue;
+        }
+
         recipientEmails.push(member.users.email);
     }
 
@@ -132,6 +141,43 @@ export const sendOrgEmail = async (orgId: number, subject: string, text: string,
     await Transport.sendMail({
         from: Deno.env.get('NODEMAILER_EMAIL')!,
         bcc: recipientEmails,
+        subject,
+        text,
+    });
+}
+
+export const sendMemberEmail = async(memberId: number, subject: string, text: string) => {
+    const { data: memberData, error: memberError } = await supabaseAdmin.from('memberships')
+        .select(`
+            role,
+            users!inner (
+                first_name,
+                email,
+                is_faculty
+            ),
+            organizations!inner (
+                name
+            )
+        `)
+        .eq('id', memberId)
+        .limit(1)
+        .returns<mtyp[]>()
+        .single();
+
+    if (memberError || !memberData) {
+        console.log('Error fetching member.');
+        return;
+    }
+
+    subject = subject.replace(/{ORG_NAME}/g, memberData.organizations.name);
+    text = text.replace(/{ORG_NAME}/g, memberData.organizations.name);
+    
+    subject = subject.replace(/{FIRST_NAME}/g, memberData.users.first_name);
+    text = text.replace(/{FIRST_NAME}/g, memberData.users.first_name);
+
+    await Transport.sendMail({
+        from: Deno.env.get('NODEMAILER_EMAIL')!,
+        to: memberData.users.email,
         subject,
         text,
     });

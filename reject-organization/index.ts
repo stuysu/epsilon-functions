@@ -103,7 +103,7 @@ Deno.serve(async (req: Request) => {
         return new Response('Failed to reject organization.', { status: 500 });
     }
 
-    /* asynchronously email admins to prevent function from hanging on client */
+    /* email admins */
 
     if (orgAdminError || !orgAdmins || !orgAdmins.length) {
         console.log('Unable to email org admins.');
@@ -122,8 +122,7 @@ Best,
 The Epsilon Team.
 `;
 
-        /* don't use await here. let this operation perform asynchronously */
-        Transport.sendMail({
+    await Transport.sendMail({
             from: Deno.env.get('NODEMAILER_FROM')!,
             to: admin.users.email,
             subject: `${rejectedOrgName} Rejected | Epsilon`,

@@ -1,6 +1,6 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import corsHeaders from '../_shared/cors.ts';
-import Transport from '../_shared/emailTransport.ts';
+import { sendOrgEmail } from '../_shared/utils.ts';
 
 type BodyType = {
     organization_id: number;
@@ -63,64 +63,12 @@ Deno.serve(async (req: Request) => {
         return new Response('Error creating post.', { status: 500 });
     }
 
-    /* asynchronously email all members of organization */
-    type mtyp = {
-        users: {
-            first_name: string;
-            email: string;
-            is_faculty: boolean;
-        };
-        organizations: { name: string };
-    };
-    supabaseClient.from('memberships')
-        .select(`
-            users!inner (
-                first_name,
-                email,
-                is_faculty
-            ),
-            organizations!inner (
-                name
-            )
-        `)
-        .eq('organization_id', body.organization_id)
-        .returns<mtyp[]>()
-        .then((resp) => {
-            const { data: memberData, error: memberError } = resp;
-            if (memberError || !memberData || !memberData.length) {
-                console.log('Error fetching members.');
-                return;
-            }
+    /* email all members of organization */
 
-            const recipientEmails = [];
-            const orgName = memberData[0].organizations.name;
+    const emailText = `${body.title}\n\n${body.description}`;
+    const emailSubject = `${body.title} | {ORG_NAME}`;
 
-            for (const member of memberData) {
-                // do not notify faculty
-                if (member.users.is_faculty && !bodyJson.notify_faculty) {
-                    continue;
-                }
-
-                recipientEmails.push(member.users.email);
-            }
-
-            const emailText = `${body.title}\n\n${body.description}`;
-
-            // don't use await here. let this operation perform asynchronously
-            Transport.sendMail({
-                from: Deno.env.get('NODEMAILER_FROM')!,
-                bcc: recipientEmails,
-                subject: `${body.title} | ${orgName}`,
-                text: emailText,
-            })
-                .catch((error: unknown) => {
-                    if (error instanceof Error) {
-                        console.error(`Failed to send email: ` + error.message);
-                    } else {
-                        console.error('Unexpected error', error);
-                    }
-                });
-        });
+    await sendOrgEmail(body.organization_id, emailSubject, emailText);
 
     return new Response(
         JSON.stringify({

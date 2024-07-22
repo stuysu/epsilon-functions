@@ -1,5 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import Transport from '../_shared/emailTransport.ts';
+import { sendOrgEmail } from '../_shared/utils.ts';
 import corsHeaders from '../_shared/cors.ts';
 
 type BodyType = {
@@ -71,15 +71,6 @@ Deno.serve(async (req: Request) => {
         };
     };
 
-    type orgAdminType = {
-        id: number;
-        role: 'ADMIN' | 'CREATOR';
-        users: {
-            first_name: string;
-            email: string;
-        };
-    };
-
     const { data: strikeData, error: strikeError } = await supabaseClient.from(
         'strikes',
     )
@@ -108,61 +99,19 @@ Deno.serve(async (req: Request) => {
     }
 
     /* asynchronously email admins to prevent function from hanging on client */
-    supabaseClient.from('memberships')
-        .select(`
-            id,
-            role,
-            users!inner (
-                first_name,
-                email
-            )
-        `)
-        .eq('organization_id', organization_id)
-        .in('role', ['ADMIN', 'CREATOR'])
-        .returns<orgAdminType[]>()
-        .then((resp) => {
-            const { data: orgAdmins, error: orgAdminError } = resp;
-            if (orgAdminError || !orgAdmins || !orgAdmins.length) {
-                console.log('Unable to email org admins.');
-                return;
-            }
-
-            const orgData = strikeData[0].organizations;
-
-            for (const admin of orgAdmins) {
-                const emailBody = `Hi ${admin.users.first_name}!
-        
-You are receiving this message because you are an admin of ${orgData.name}
+    
+    const emailBody = `You are receiving this message because you are an admin of {ORG_NAME}
         
 This email is to let you know that your organization has be given a strike for the following reason:
 ${reason}
 
-You can view this strike at ${
-                    Deno.env.get('SITE_URL')
-                }/${orgData.url}/admin/strikes
+You can view this strike at ${Deno.env.get('SITE_URL')}/${strikeData[0].organizations.url}/admin/strikes
 
 If you would like to dispute this strike, please contact clubpub@stuysu.org.
 `;
+    const emailSubject = `You have been given a strike {ORG_NAME} | Epsilon`
 
-                /* don't use await here. let this operation perform asynchronously */
-                Transport.sendMail({
-                    from: Deno.env.get('NODEMAILER_FROM')!,
-                    to: admin.users.email,
-                    subject:
-                        `You have been given a strike ${orgData.name} | Epsilon`,
-                    text: emailBody,
-                })
-                    .catch((error: unknown) => {
-                        if (error instanceof Error) {
-                            console.error(
-                                `Failed to send email: ` + error.message,
-                            );
-                        } else {
-                            console.error('Unexpected error', error);
-                        }
-                    });
-            }
-        });
+    await sendOrgEmail(organization_id, emailSubject, emailBody, false, true);
 
     return new Response(
         JSON.stringify({

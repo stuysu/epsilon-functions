@@ -175,7 +175,7 @@ This is due to the fact that the room they were initially held has now been remo
 We are deeply sorry for the inconvenience, and we hope you are able to reschedule the meetings to a different room
 The Epsilon Team
                     `;
-                    Transport.sendMail({
+                    await Transport.sendMail({
                         from: Deno.env.get('NODEMAILER_FROM')!,
                         to: admin.users.email,
                         subject: `Meetings removed for ${value.name} | Epsilon`,

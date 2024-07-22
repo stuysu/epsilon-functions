@@ -123,7 +123,7 @@ Deno.serve(async (req: Request) => {
         return new Response('Could not create meeting.', { status: 500 });
     }
 
-    /* asynchronously email all members of organization */
+    /* send out emails */
     const startTime = datetime(createMeetingData[0].start_time)
                 .toZonedTime('America/New_York').format('MMMM d, YYYY, h:mm a');
             const endTime = datetime(createMeetingData[0].end_time).toZonedTime(

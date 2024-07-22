@@ -1,5 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import Transport from '../_shared/emailTransport.ts';
+import { sendOrgEmail } from '../_shared/utils.ts';
 import corsHeaders from '../_shared/cors.ts';
 
 // import { initOrgCalendar } from '../_shared/google/calendar.ts'; REMOVE FOR NOW: DOESN'T WORK IN PRODUCTION
@@ -73,39 +73,8 @@ Deno.serve(async (req: Request) => {
 
     const approvedOrgName = orgData[0].name;
 
-    type orgAdminType = {
-        id: number;
-        role: 'ADMIN' | 'CREATOR';
-        users: {
-            first_name: string;
-            email: string;
-        };
-    };
-
-    /* asynchronously email admins to prevent function from hanging on client */
-    supabaseClient.from('memberships')
-        .select(`
-            id,
-            role,
-            users!inner (
-                first_name,
-                email
-            )
-        `)
-        .eq('organization_id', organization_id)
-        .in('role', ['ADMIN', 'CREATOR'])
-        .returns<orgAdminType[]>()
-        .then((resp) => {
-            const { data: orgAdmins, error: orgAdminError } = resp;
-            if (orgAdminError || !orgAdmins || !orgAdmins.length) {
-                console.log('Unable to email org admins.');
-                return;
-            }
-
-            for (const admin of orgAdmins) {
-                const emailBody = `Hi ${admin.users.first_name}!
-
-Congratulations! ${approvedOrgName} has been approved. You are now an official Stuyvesant club!
+    /* send emails  */
+    const emailBody = `Congratulations! ${approvedOrgName} has been approved. You are now an official Stuyvesant club!
 
 Once your club is unlocked, you can start advertising your club, recruiting members, and holding meetings. We hope you enjoy your club experience at Stuy.
 
@@ -116,24 +85,9 @@ The Epsilon Team
 For technical concerns, please contact it@stuysu.org. For general questions about clubs & pubs, email clubpub@stuysu.org.
 `;
 
-                /* don't use await here. let this operation perform asynchronously */
-                Transport.sendMail({
-                    from: Deno.env.get('NODEMAILER_FROM')!,
-                    to: admin.users.email,
-                    subject: `${approvedOrgName} Approved | Epsilon`,
-                    text: emailBody,
-                })
-                    .catch((error: unknown) => {
-                        if (error instanceof Error) {
-                            console.error(
-                                `Failed to send email: ` + error.message,
-                            );
-                        } else {
-                            console.error('Unexpected error', error);
-                        }
-                    });
-            }
-        });
+    const subject = `${approvedOrgName} Approved | Epsilon`;
+
+    await sendOrgEmail(organization_id, subject, emailBody, false, true);
 
     /* asynchronously create a google calendar
     REMOVE FOR NOW: DOESN'T WORK IN PRODUCTION
