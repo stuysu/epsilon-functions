@@ -75,7 +75,7 @@ serve(async (req: Request) => {
     const envVars = Object.keys(envVarsObj).map((k) => [k, envVarsObj[k]]);
 
     const cpuTimeSoftLimitMs = 10000;
-	const cpuTimeHardLimitMs = 20000;
+    const cpuTimeHardLimitMs = 20000;
 
     try {
         const worker = await EdgeRuntime.userWorkers.create({
