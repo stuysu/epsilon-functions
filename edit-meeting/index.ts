@@ -137,7 +137,7 @@ Room: ${updateMeetingData[0].rooms?.name || 'Virtual'}`;
 
     const emailSubject = `{ORG_NAME} updated a meeting | Epsilon`;
 
-    await sendOrgEmail(updateMeetingData[0].organization_id, emailSubject, emailText);
+    sendOrgEmail(updateMeetingData[0].organization_id, emailSubject, emailText);
 
     return new Response(
         JSON.stringify({
