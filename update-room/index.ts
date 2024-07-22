@@ -97,7 +97,7 @@ Deno.serve(async (req: Request) => {
         'FRIDAY',
         'SATURDAY',
     ];
-    supabaseClient.from('meetings')
+    await supabaseClient.from('meetings')
         .select(`
             id,
             title,
