@@ -74,7 +74,7 @@ serve(async (req: Request) => {
     const envVarsObj = Deno.env.toObject();
     const envVars = Object.keys(envVarsObj).map((k) => [k, envVarsObj[k]]);
 
-    const cpuTimeSoftLimitMs = 10000;
+    const cpuTimeSoftLimitMs = 15000;
     const cpuTimeHardLimitMs = 20000;
 
     try {
