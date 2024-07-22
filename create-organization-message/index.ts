@@ -145,7 +145,7 @@ The Epsilon Team.
 `;
 
         /* don't use await here. let this operation perform asynchronously */
-        await Transport.sendMail({
+        Transport.sendMail({
             from: Deno.env.get('NODEMAILER_FROM')!,
             to: admin.users.email,
             subject: `${orgName} New Message | Epsilon`,

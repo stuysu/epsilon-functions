@@ -125,7 +125,7 @@ This email is to let you know that ${siteUser.first_name} ${siteUser.last_name} 
         orgData[0].name
     } | Epsilon`;
 
-    await sendOrgEmail(organization_id, emailSubject, emailBody, false, true);
+    sendOrgEmail(organization_id, emailSubject, emailBody, false, true);
 
     return new Response(
         JSON.stringify({

@@ -110,7 +110,7 @@ The Epsilon Team
 
             const emailSubject = `Meeting removed for {ORG_NAME} | Epsilon`;
 
-            await sendOrgEmail(orgId, emailSubject, emailBody, false, true);
+            sendOrgEmail(orgId, emailSubject, emailBody, false, true);
     }
 
     const { error: reserveError } = await supabaseClient.from('meetings')

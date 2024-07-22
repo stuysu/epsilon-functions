@@ -97,7 +97,7 @@ If you need any technical assistance, email us at it@stuysu.org. If you have gen
 
     const emailSubject = `Membership Approved {ORG_NAME} | Epsilon`;
 
-    await sendMemberEmail(member_id, emailSubject, emailBody);
+    sendMemberEmail(member_id, emailSubject, emailBody);
 
     /* ALSO CHECK IF CLUB IS PENDING AND SHOULD IT BE UNLOCKED */
     const orgId = memberData[0].organizations.id;
@@ -148,7 +148,7 @@ The Epsilon Team
 `;
             const subject = `Organization Unlocked {ORG_NAME} | Epsilon`;
 
-            await sendOrgEmail(orgId, subject, emailText, false, true);
+            sendOrgEmail(orgId, subject, emailText, false, true);
 
             await supabaseAdmin.from('organizations')
                 .update({ state: 'UNLOCKED' })

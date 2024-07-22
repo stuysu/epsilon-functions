@@ -87,7 +87,7 @@ For technical concerns, please contact it@stuysu.org. For general questions abou
 
     const subject = `${approvedOrgName} Approved | Epsilon`;
 
-    await sendOrgEmail(organization_id, subject, emailBody, false, true);
+    sendOrgEmail(organization_id, subject, emailBody, false, true);
 
     /* asynchronously create a google calendar
     REMOVE FOR NOW: DOESN'T WORK IN PRODUCTION

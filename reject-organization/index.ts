@@ -122,7 +122,7 @@ Best,
 The Epsilon Team.
 `;
 
-    await Transport.sendMail({
+    Transport.sendMail({
             from: Deno.env.get('NODEMAILER_FROM')!,
             to: admin.users.email,
             subject: `${rejectedOrgName} Rejected | Epsilon`,

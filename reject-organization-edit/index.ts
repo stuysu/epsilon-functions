@@ -99,7 +99,7 @@ For technical concerns, please contact it@stuysu.org. For general questions abou
 
     const emailSubject = `${rejectedOrgName} Update Rejected | Epsilon`;
 
-    await sendOrgEmail(organization_id, emailSubject, emailBody, false, true);
+    sendOrgEmail(organization_id, emailSubject, emailBody, false, true);
 
     return new Response(
         JSON.stringify({

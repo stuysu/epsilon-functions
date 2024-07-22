@@ -141,7 +141,7 @@ Room: ${createMeetingData[0].rooms?.name || 'Virtual'}`;
 
     const emailSubject = `{ORG_NAME} scheduled a meeting | Epsilon`;
 
-    await sendOrgEmail(body.organization_id, emailSubject, emailText, body.notify_faculty);
+    sendOrgEmail(body.organization_id, emailSubject, emailText, body.notify_faculty);
 
     /* asynchronously create calendar event
     [DOESN'T WORK FOR NOW]

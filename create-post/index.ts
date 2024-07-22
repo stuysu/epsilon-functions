@@ -68,7 +68,7 @@ Deno.serve(async (req: Request) => {
     const emailText = `${body.title}\n\n${body.description}`;
     const emailSubject = `${body.title} | {ORG_NAME}`;
 
-    await sendOrgEmail(body.organization_id, emailSubject, emailText);
+    sendOrgEmail(body.organization_id, emailSubject, emailText);
 
     return new Response(
         JSON.stringify({

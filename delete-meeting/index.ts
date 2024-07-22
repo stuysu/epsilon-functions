@@ -93,7 +93,7 @@ Room: ${oldMeetingData[0].rooms?.name || 'Virtual'}`;
     const emailSubject = `{ORG_NAME} canceled a meeting | Epsilon`;
 
     const oldOrgId = oldMeetingData[0].organization_id;
-    await sendOrgEmail(oldOrgId, emailSubject, emailText);
+    sendOrgEmail(oldOrgId, emailSubject, emailText);
 
     return new Response(
         JSON.stringify({

@@ -1,5 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import Transport from '../_shared/emailTransport.ts';
+import { sendOrgEmail } from '../_shared/utils.ts';
 import corsHeaders from '../_shared/cors.ts';
 
 type BodyType = {
@@ -95,29 +95,8 @@ Deno.serve(async (req: Request) => {
     };
 
     /* asynchronously email admins to prevent function from hanging on client */
-    supabaseClient.from('memberships')
-        .select(`
-            id,
-            role,
-            users!inner (
-                first_name,
-                email
-            )
-        `)
-        .eq('organization_id', organization_id)
-        .in('role', ['ADMIN', 'CREATOR'])
-        .returns<orgAdminType[]>()
-        .then((resp) => {
-            const { data: orgAdmins, error: orgAdminError } = resp;
-            if (orgAdminError || !orgAdmins || !orgAdmins.length) {
-                console.log('Unable to email org admins.');
-                return;
-            }
-
-            for (const admin of orgAdmins) {
-                const emailBody = `Hi ${admin.users.first_name}!
-
-Your organization update request for ${updatedOrgName} has been approved.
+    
+    const emailBody = `Your organization update request for ${updatedOrgName} has been approved.
 
 Best,
 
@@ -125,25 +104,9 @@ The Epsilon Team
 
 For technical concerns, please contact it@stuysu.org. For general questions about clubs & pubs, email clubpub@stuysu.org.
 `;
+    const emailSubject = `${updatedOrgName} Update Approved | Epsilon`;
 
-                /* don't use await here. let this operation perform asynchronously */
-                Transport.sendMail({
-                    from: Deno.env.get('NODEMAILER_FROM')!,
-                    to: admin.users.email,
-                    subject: `${updatedOrgName} Update Approved | Epsilon`,
-                    text: emailBody,
-                })
-                    .catch((error: unknown) => {
-                        if (error instanceof Error) {
-                            console.error(
-                                `Failed to send email: ` + error.message,
-                            );
-                        } else {
-                            console.error('Unexpected error', error);
-                        }
-                    });
-            }
-        });
+    sendOrgEmail(organization_id, emailSubject, emailBody, false, true);
 
     if (deleteEditError) {
         return new Response(

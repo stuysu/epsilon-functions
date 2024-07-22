@@ -111,7 +111,7 @@ If you would like to dispute this strike, please contact clubpub@stuysu.org.
 `;
     const emailSubject = `You have been given a strike {ORG_NAME} | Epsilon`
 
-    await sendOrgEmail(organization_id, emailSubject, emailBody, false, true);
+    sendOrgEmail(organization_id, emailSubject, emailBody, false, true);
 
     return new Response(
         JSON.stringify({
