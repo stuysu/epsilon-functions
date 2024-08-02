@@ -7,18 +7,20 @@ type BodyType = {
     url: string;
     socials: string;
     mission: string;
-    purpose: string;
+    goals: string;
     benefit: string;
     keywords: string;
     tags: string[];
     appointment_procedures: string;
     uniqueness: string;
+    meeting_description: string;
     meeting_schedule: string;
     meeting_days: string[];
     commitment_level: string;
     join_instructions: string;
     is_returning: boolean;
     returning_info: string;
+    fair?: boolean;
 };
 
 /* accepts JSON */
