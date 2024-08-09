@@ -1,6 +1,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { sendOrgEmail } from '../_shared/utils.ts';
 import corsHeaders from '../_shared/cors.ts';
+import {footer} from "../_shared/strings.ts";
 
 type BodyType = {
     organization_id: number;
@@ -88,16 +89,11 @@ Deno.serve(async (req: Request) => {
     }
 
     /* email admins */
-    const emailBody = `Your organization update request for ${rejectedOrgName} was rejected.
+    const emailBody =
+        `Your organization update request for ${rejectedOrgName} was rejected.
+For more information, please check your club admin panel's messages tab.` + footer;
 
-Best,
-
-The Epsilon Team
-
-For technical concerns, please contact it@stuysu.org. For general questions about clubs & pubs, email clubpub@stuysu.org.
-`;
-
-    const emailSubject = `${rejectedOrgName} Update Rejected | Epsilon`;
+    const emailSubject = `${rejectedOrgName}: Update Rejected | Epsilon`;
 
     sendOrgEmail(organization_id, emailSubject, emailBody, false, true);
 

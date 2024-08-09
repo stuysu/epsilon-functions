@@ -2,6 +2,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import corsHeaders from '../_shared/cors.ts';
 import supabaseAdmin from '../_shared/supabaseAdmin.ts';
 import { sendMemberEmail, sendOrgEmail } from '../_shared/utils.ts';
+import { footer } from '../_shared/strings.ts';
 
 type BodyType = {
     member_id: number;
@@ -84,18 +85,11 @@ Deno.serve(async (req: Request) => {
 
     const emailBody = `Hi {FIRST_NAME}!
             
-Congrats! You're now a member of {ORG_NAME}
+Congrats! You are now a member of {ORG_NAME}.
 
-We hope you enjoy your club experience at Stuy.
+We hope you enjoy your club experience at Stuy.` + footer;
 
-With Love
-
-The Epsilon Team
-
-If you need any technical assistance, email us at it@stuysu.org. If you have general questions about Clubs & Pubs, reach out to us at clubpub@stuysu.org.
-`;
-
-    const emailSubject = `Membership Approved {ORG_NAME} | Epsilon`;
+    const emailSubject = `Membership Approved: {ORG_NAME} | Epsilon`;
 
     sendMemberEmail(member_id, emailSubject, emailBody);
 
@@ -136,17 +130,13 @@ If you need any technical assistance, email us at it@stuysu.org. If you have gen
             /* SEND ORG ADMINS AN EMAIL ABOUT THIS */
 
             /* asynchronously email admins to prevent function from hanging on client */
-            const emailText = `You are receiving this email because your organization {ORG_NAME} has been approved and unlocked.
+            const emailText =
+                `You are receiving this email because your organization {ORG_NAME} has been approved and unlocked.
 
 You can begin creating meetings, making posts, and your organization will be displayed on the club catalog.
 
-We hope you enjoy your club experience at Stuy!
-
-With Love,
-
-The Epsilon Team
-`;
-            const subject = `Organization Unlocked {ORG_NAME} | Epsilon`;
+We hope you enjoy your club experience at Stuy!` + footer;
+            const subject = `Organization Unlocked: {ORG_NAME} | Epsilon`;
 
             sendOrgEmail(orgId, subject, emailText, false, true);
 

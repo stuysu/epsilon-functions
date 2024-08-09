@@ -2,6 +2,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { sendOrgEmail } from '../_shared/utils.ts';
 import corsHeaders from '../_shared/cors.ts';
 import { datetime } from 'https://deno.land/x/ptera/mod.ts';
+import { footer } from '../_shared/strings.ts';
 
 type BodyType = {
     room_id: number;
@@ -81,7 +82,9 @@ Deno.serve(async (req: Request) => {
     );
 
     if (conflictingMeeting) {
-        const { data: orgData, error: orgError } = await supabaseClient.from('meetings')
+        const { data: orgData, error: orgError } = await supabaseClient.from(
+            'meetings',
+        )
             .delete()
             .eq('id', conflictingMeeting.meeting_id)
             .select(`
@@ -93,24 +96,28 @@ Deno.serve(async (req: Request) => {
             `)
             .returns<
                 { title: string; organizations: { name: string; id: number } }[]
-            >()
+            >();
 
-            if (orgError || !orgData) {
-                console.error('Failed to fetch org.');
-                return new Response('Failed to notify conflicting rooms.', { status: 500 });
-            }
+        if (orgError || !orgData) {
+            console.error('Failed to fetch org.');
+            return new Response('Failed to notify conflicting rooms.', {
+                status: 500,
+            });
+        }
 
-            const orgId = orgData[0].organizations.id;
+        const orgId = orgData[0].organizations.id;
 
-            const emailBody = `Your meeting, ${orgData[0].title}, has been cancelled by admins due to a conflict with another meeting.
+        const emailBody =
+            `Your meeting, ${
+                orgData[0].title
+            }, has been cancelled by admininstrators due to a conflict with another meeting.
 
-We deeply apologize for the inconvenience, and we hope you are able to schedule it to a different room.
-The Epsilon Team
-`;
+We sincerely apologize for the inconvenience, and we hope you are able to schedule it to a different room.` +
+            footer;
 
-            const emailSubject = `Meeting removed for {ORG_NAME} | Epsilon`;
+        const emailSubject = `{ORG_NAME}: Meeting Removed | Epsilon`;
 
-            sendOrgEmail(orgId, emailSubject, emailBody, false, true);
+        sendOrgEmail(orgId, emailSubject, emailBody, false, true);
     }
 
     const { error: reserveError } = await supabaseClient.from('meetings')

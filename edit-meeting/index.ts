@@ -5,6 +5,7 @@ import { sendOrgEmail } from '../_shared/utils.ts';
 import { datetime } from 'https://deno.land/x/ptera/mod.ts';
 
 import { isValidMeeting } from '../_shared/utils.ts';
+import { footer } from '../_shared/strings.ts';
 
 type BodyType = {
     title: string;
@@ -118,7 +119,6 @@ Deno.serve(async (req: Request) => {
     }
 
     /* asynchronously email all members of organization */
-    
 
     const startTime = datetime(updateMeetingData[0].start_time)
         .toZonedTime('America/New_York').format('MMMM d, YYYY, h:mm a');
@@ -133,7 +133,7 @@ Title: ${body.title}
 Description: ${body.description}
 Start Date: ${startTime} EST
 End Date: ${endTime} EST
-Room: ${updateMeetingData[0].rooms?.name || 'Virtual'}`;
+Room: ${updateMeetingData[0].rooms?.name || 'Virtual'}` + footer;
 
     const emailSubject = `{ORG_NAME} updated a meeting | Epsilon`;
 

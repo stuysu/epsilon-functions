@@ -1,6 +1,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { sendOrgEmail } from '../_shared/utils.ts';
 import corsHeaders from '../_shared/cors.ts';
+import { footer } from '../_shared/strings.ts';
 
 type BodyType = {
     organization_id: number;
@@ -95,16 +96,11 @@ Deno.serve(async (req: Request) => {
     };
 
     /* asynchronously email admins to prevent function from hanging on client */
-    
-    const emailBody = `Your organization update request for ${updatedOrgName} has been approved.
 
-Best,
-
-The Epsilon Team
-
-For technical concerns, please contact it@stuysu.org. For general questions about clubs & pubs, email clubpub@stuysu.org.
-`;
-    const emailSubject = `${updatedOrgName} Update Approved | Epsilon`;
+    const emailBody =
+        `Your organization update request for ${updatedOrgName} has been approved.` +
+        footer;
+    const emailSubject = `${updatedOrgName}: Charter Update Approved | Epsilon`;
 
     sendOrgEmail(organization_id, emailSubject, emailBody, false, true);
 

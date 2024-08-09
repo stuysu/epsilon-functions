@@ -1,6 +1,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { sendOrgEmail } from '../_shared/utils.ts';
 import corsHeaders from '../_shared/cors.ts';
+import {footer} from "../_shared/strings.ts";
 
 type BodyType = {
     organization_id: number;
@@ -99,17 +100,20 @@ Deno.serve(async (req: Request) => {
     }
 
     /* asynchronously email admins to prevent function from hanging on client */
-    
-    const emailBody = `You are receiving this message because you are an admin of {ORG_NAME}
+
+    const emailBody =
+        `You are receiving this message because you are an admin of {ORG_NAME}
         
 This email is to let you know that your organization has be given a strike for the following reason:
 ${reason}
 
-You can view this strike at ${Deno.env.get('SITE_URL')}/${strikeData[0].organizations.url}/admin/strikes
+You can view this strike at ${Deno.env.get('SITE_URL')}/${
+            strikeData[0].organizations.url
+        }/admin/strikes
 
 If you would like to dispute this strike, please contact clubpub@stuysu.org.
-`;
-    const emailSubject = `You have been given a strike {ORG_NAME} | Epsilon`
+` + footer;
+    const emailSubject = `{ORG_NAME}: Strike Received | Epsilon`;
 
     sendOrgEmail(organization_id, emailSubject, emailBody, false, true);
 

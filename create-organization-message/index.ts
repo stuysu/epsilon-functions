@@ -1,6 +1,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import corsHeaders from '../_shared/cors.ts';
 import Transport from '../_shared/emailTransport.ts';
+import { footer } from '../_shared/strings.ts';
 
 type BodyType = {
     organization_id: number;
@@ -135,20 +136,13 @@ ${siteUser.first_name} ${siteUser.last_name}: ${content}
 
 You can view this message at ${
             Deno.env.get('SITE_URL')
-        }/${orgUrl}/admin/messages.
-
-If you have any questions, please email clubpub@stuysu.org.
-
-Best,
-
-The Epsilon Team.
-`;
+        }/${orgUrl}/admin/messages.` + footer;
 
         /* don't use await here. let this operation perform asynchronously */
         Transport.sendMail({
             from: Deno.env.get('NODEMAILER_FROM')!,
             to: admin.users.email,
-            subject: `${orgName} New Message | Epsilon`,
+            subject: `${orgName}: New Administrator Message | Epsilon`,
             text: emailBody,
         })
             .catch((error: unknown) => {

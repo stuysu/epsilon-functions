@@ -3,6 +3,7 @@ import corsHeaders from '../_shared/cors.ts';
 import { sendOrgEmail } from '../_shared/utils.ts';
 
 import { datetime } from 'https://deno.land/x/ptera/mod.ts';
+import { footer } from '../_shared/strings.ts';
 
 type BodyType = {
     id: number;
@@ -73,7 +74,6 @@ Deno.serve(async (req: Request) => {
 
     /* notify members */
     /* email all members of organization */
-    
 
     const startTime = datetime(oldMeetingData[0].start_time)
         .toZonedTime('America/New_York').format('MMMM d, YYYY, h:mm a');
@@ -88,7 +88,7 @@ Title: ${oldMeetingData[0].title}
 Description: ${oldMeetingData[0].description}
 Start Date: ${startTime} EST
 End Date: ${endTime} EST
-Room: ${oldMeetingData[0].rooms?.name || 'Virtual'}`;
+Room: ${oldMeetingData[0].rooms?.name || 'Virtual'}` + footer;
 
     const emailSubject = `{ORG_NAME} canceled a meeting | Epsilon`;
 

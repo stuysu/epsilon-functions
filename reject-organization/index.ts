@@ -1,6 +1,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import Transport from '../_shared/emailTransport.ts';
 import corsHeaders from '../_shared/cors.ts';
+import { footer } from '../_shared/strings.ts';
 
 type BodyType = {
     organization_id: number;
@@ -113,19 +114,12 @@ Deno.serve(async (req: Request) => {
     for (const admin of orgAdmins) {
         const emailBody = `Hi ${admin.users.first_name}!
 
-Your charter for ${rejectedOrgName} has been rejected.
+Your charter for ${rejectedOrgName} has been rejected.` + footer;
 
-If you have any questions, please email clubpub@stuysu.org.
-
-Best,
-
-The Epsilon Team.
-`;
-
-    Transport.sendMail({
+        Transport.sendMail({
             from: Deno.env.get('NODEMAILER_FROM')!,
             to: admin.users.email,
-            subject: `${rejectedOrgName} Rejected | Epsilon`,
+            subject: `${rejectedOrgName}: Charter Rejected | Epsilon`,
             text: emailBody,
         })
             .catch((error: unknown) => {

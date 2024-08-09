@@ -1,6 +1,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { sendOrgEmail } from '../_shared/utils.ts';
 import corsHeaders from '../_shared/cors.ts';
+import { footer } from '../_shared/strings.ts';
 
 type BodyType = {
     organization_id: number;
@@ -114,16 +115,17 @@ Deno.serve(async (req: Request) => {
     /* if success, then send email to organization admins */
 
     /* email admins */
-    const emailBody = `You are receiving this message because you are an admin of ${orgData[0].name}
+    const emailBody =
+        `You are receiving this message because you are an admin of ${
+            orgData[0].name
+        }
         
 This email is to let you know that ${siteUser.first_name} ${siteUser.last_name} has requested to join ${
-                    orgData[0].name
-                }. You can approve their request at ${
-                    Deno.env.get('SITE_URL')
-                }/${orgData[0].url}/admin/member-requests`;
-    const emailSubject = `Someone has requested to join ${
-        orgData[0].name
-    } | Epsilon`;
+            orgData[0].name
+        }. You can approve their request at ${Deno.env.get('SITE_URL')}/${
+            orgData[0].url
+        }/admin/member-requests` + footer;
+    const emailSubject = `${orgData[0].name}: New Join Request | Epsilon`;
 
     sendOrgEmail(organization_id, emailSubject, emailBody, false, true);
 

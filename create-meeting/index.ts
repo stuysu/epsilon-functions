@@ -3,6 +3,7 @@ import corsHeaders from '../_shared/cors.ts';
 
 import { datetime } from 'https://deno.land/x/ptera/mod.ts';
 import { isValidMeeting, sendOrgEmail } from '../_shared/utils.ts';
+import { footer } from '../_shared/strings.ts';
 
 // import { createCalendarEvent } from '../_shared/google/calendar.ts'; doesn't work
 
@@ -125,10 +126,10 @@ Deno.serve(async (req: Request) => {
 
     /* send out emails */
     const startTime = datetime(createMeetingData[0].start_time)
-                .toZonedTime('America/New_York').format('MMMM d, YYYY, h:mm a');
-            const endTime = datetime(createMeetingData[0].end_time).toZonedTime(
-                'America/New_York',
-            ).format('MMMM d, YYYY, h:mm a');
+        .toZonedTime('America/New_York').format('MMMM d, YYYY, h:mm a');
+    const endTime = datetime(createMeetingData[0].end_time).toZonedTime(
+        'America/New_York',
+    ).format('MMMM d, YYYY, h:mm a');
 
     const emailText =
         `You are receiving this email because you are a member of {ORG_NAME}
@@ -137,11 +138,16 @@ Title: ${body.title}
 Description: ${body.description}
 Start Date: ${startTime} EST
 End Date: ${endTime} EST
-Room: ${createMeetingData[0].rooms?.name || 'Virtual'}`;
+Room: ${createMeetingData[0].rooms?.name || 'Virtual'}` + footer;
 
     const emailSubject = `{ORG_NAME} scheduled a meeting | Epsilon`;
 
-    sendOrgEmail(body.organization_id, emailSubject, emailText, body.notify_faculty);
+    sendOrgEmail(
+        body.organization_id,
+        emailSubject,
+        emailText,
+        body.notify_faculty,
+    );
 
     /* asynchronously create calendar event
     [DOESN'T WORK FOR NOW]

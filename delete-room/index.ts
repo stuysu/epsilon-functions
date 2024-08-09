@@ -2,6 +2,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import Transport from '../_shared/emailTransport.ts';
 import corsHeaders from '../_shared/cors.ts';
 import { datetime } from 'https://deno.land/x/ptera/mod.ts';
+import { footer } from '../_shared/strings.ts';
 
 type BodyType = {
     room_id: number;
@@ -170,15 +171,14 @@ ${
                         ).join('\n')
                     }
 
-This is due to the fact that the room they were initially held has now been removed from the service.
+This is because the room(s) they were originally scheduled for have been taken out of service.
 
-We are deeply sorry for the inconvenience, and we hope you are able to reschedule the meetings to a different room
-The Epsilon Team
-                    `;
+We are deeply sorry for the inconvenience, and we hope you are able to reschedule the meetings in a different room.` +
+                        footer;
                     Transport.sendMail({
                         from: Deno.env.get('NODEMAILER_FROM')!,
                         to: admin.users.email,
-                        subject: `Meetings removed for ${value.name} | Epsilon`,
+                        subject: `${value.name}: Meetings Removed | Epsilon`,
                         text: emailBody,
                     });
                 }
