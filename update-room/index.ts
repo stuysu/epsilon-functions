@@ -218,7 +218,7 @@ ${
 
 This is because the room(s) they were originally scheduled for have been taken out of service.
 
-We are deeply sorry for the inconvenience, and we hope you are able to reschedule the meetings in a different room.` +
+We are sincerely apologize for the inconvenience, and we hope you are able to reschedule the meetings in a different room.` +
                         footer;
                     Transport.sendMail({
                         from: Deno.env.get('NODEMAILER_FROM')!,

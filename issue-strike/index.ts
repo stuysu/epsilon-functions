@@ -1,7 +1,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { sendOrgEmail } from '../_shared/utils.ts';
 import corsHeaders from '../_shared/cors.ts';
-import {footer} from "../_shared/strings.ts";
+import { footer } from '../_shared/strings.ts';
 
 type BodyType = {
     organization_id: number;

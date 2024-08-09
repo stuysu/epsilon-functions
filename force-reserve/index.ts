@@ -112,7 +112,7 @@ Deno.serve(async (req: Request) => {
                 orgData[0].title
             }, has been cancelled by admininstrators due to a conflict with another meeting.
 
-We sincerely apologize for the inconvenience, and we hope you are able to schedule it to a different room.` +
+We sincerely apologize for the inconvenience, and we hope you are able to schedule the meeting in a different room.` +
             footer;
 
         const emailSubject = `{ORG_NAME}: Meeting Removed | Epsilon`;

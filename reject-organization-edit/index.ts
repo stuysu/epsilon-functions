@@ -1,7 +1,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { sendOrgEmail } from '../_shared/utils.ts';
 import corsHeaders from '../_shared/cors.ts';
-import {footer} from "../_shared/strings.ts";
+import { footer } from '../_shared/strings.ts';
 
 type BodyType = {
     organization_id: number;
@@ -91,7 +91,8 @@ Deno.serve(async (req: Request) => {
     /* email admins */
     const emailBody =
         `Your organization update request for ${rejectedOrgName} was rejected.
-For more information, please check your club admin panel's messages tab.` + footer;
+For more information, please check your club admin panel's messages tab.` +
+        footer;
 
     const emailSubject = `${rejectedOrgName}: Update Rejected | Epsilon`;
 
