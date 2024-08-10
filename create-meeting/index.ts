@@ -132,7 +132,7 @@ Deno.serve(async (req: Request) => {
     ).format('MMMM d, YYYY, h:mm a');
 
     const emailText =
-        `You are receiving this email because you are a member of {ORG_NAME}
+        `You are receiving this email because you are a member of {ORG_NAME}.
 This email is to let you know of an upcoming meeting. The details of which are below.
 Title: ${body.title}
 Description: ${body.description}

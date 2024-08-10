@@ -102,7 +102,7 @@ Deno.serve(async (req: Request) => {
     /* asynchronously email admins to prevent function from hanging on client */
 
     const emailBody =
-        `You are receiving this message because you are an admin of {ORG_NAME}
+        `You are receiving this message because you are an admin of {ORG_NAME}.
         
 This email is to let you know that your organization has be given a strike for the following reason:
 ${reason}

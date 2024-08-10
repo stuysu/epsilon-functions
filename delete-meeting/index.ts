@@ -82,7 +82,7 @@ Deno.serve(async (req: Request) => {
     ).format('MMMM d, YYYY, h:mm a');
 
     const emailText =
-        `You are receiving this email because you are a member of {ORG_NAME}
+        `You are receiving this email because you are a member of {ORG_NAME}.
 This email is to let you know that the meeting listed below is *CANCELED*
 Title: ${oldMeetingData[0].title}
 Description: ${oldMeetingData[0].description}
