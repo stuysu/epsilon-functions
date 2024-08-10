@@ -147,7 +147,7 @@ export const sendOrgEmail = async (
     text = text.replace(/{ORG_NAME}/g, orgName);
 
     await Transport.sendMail({
-        from: Deno.env.get('NODEMAILER_EMAIL')!,
+        from: Deno.env.get('NODEMAILER_FROM')!,
         bcc: recipientEmails,
         subject,
         text,
@@ -190,7 +190,7 @@ export const sendMemberEmail = async (
     text = text.replace(/{FIRST_NAME}/g, memberData.users.first_name);
 
     await Transport.sendMail({
-        from: Deno.env.get('NODEMAILER_EMAIL')!,
+        from: Deno.env.get('NODEMAILER_FROM')!,
         to: memberData.users.email,
         subject,
         text,
