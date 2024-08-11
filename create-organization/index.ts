@@ -23,6 +23,22 @@ type BodyType = {
     fair?: boolean;
 };
 
+const RESERVED_PATHS = [
+    'catalog',
+    'create',
+    'about',
+    'meetings',
+    'rules',
+    'archive',
+    'modules',
+    'admin',
+    'attendance',
+    'opportunities',
+    'valentines',
+    'today',
+    'announcements',
+];
+
 /* accepts JSON */
 Deno.serve(async (req: Request) => {
     if (req.method === 'OPTIONS') {
@@ -63,6 +79,13 @@ Deno.serve(async (req: Request) => {
 
     const siteUser = verifiedUsers[0];
     const body: BodyType = await req.json();
+    if (RESERVED_PATHS.indexOf(body.url) !== -1) {
+        return new Response(
+            'You may not register an Epsilon URL that is already in use.',
+            { status: 400 },
+        );
+    }
+    body.url = body.url.replace(' ', '-');
 
     const { data: orgData, error: orgCreateError } = await supabaseClient.from(
         'organizations',
