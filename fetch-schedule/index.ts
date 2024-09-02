@@ -4,8 +4,8 @@ import corsHeaders from '../_shared/cors.ts';
 Deno.serve(async (req: Request) => {
     const url = new URL(req.url);
     const name = url.searchParams.get('name');
-    
-    if(!name) {
+
+    if (!name) {
         return new Response('Missing schedule name field', { status: 400 });
     }
 
@@ -22,7 +22,7 @@ Deno.serve(async (req: Request) => {
 
     if (scheduleError) {
         return new Response('Failed to fetch schedule.', { status: 500 });
-    }    
+    }
 
     return new Response(
         JSON.stringify(scheduleData.schedule),
