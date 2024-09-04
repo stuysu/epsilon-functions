@@ -33,6 +33,16 @@ Deno.serve(async (req: Request) => {
     const { data: userData } = await supabaseClient.auth.getUser(jwt);
     const user = userData.user;
 
+    const { data: siteSettings } = await supabaseClient.from('settings')
+        .select(`
+	required_members
+    `)
+        .returns<styp[]>();
+    let required_members = 0;
+    if (siteSettings) {
+        required_members = siteSettings[0].required_members;
+    }
+
     /* Failed to fetch supabase user */
     if (!user) {
         return new Response('Failed to fetch user.', { status: 500 });
@@ -78,7 +88,11 @@ Deno.serve(async (req: Request) => {
     const emailBody =
         `Congratulations! ${approvedOrgName} has been approved. You are now an official Stuyvesant club!
 
-Once your club is unlocked at 10 members, you can start advertising your club, recruiting members, and holding meetings. We hope you enjoy your club experience at Stuy.` +
+${
+            required_members > 0
+                ? `Once your club is unlocked at ${required_members} members, y`
+                : 'Y'
+        }ou can start advertising your club, recruiting members, and holding meetings. We hope you enjoy your club experience at Stuy.` +
         footer;
 
     const subject = `${approvedOrgName}: Charter Approved | Epsilon`;
