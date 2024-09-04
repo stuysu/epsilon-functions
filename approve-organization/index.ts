@@ -68,10 +68,18 @@ Deno.serve(async (req: Request) => {
         name: string;
     };
 
+    const { count: org_members } = await supabaseClient.from('memberships')
+        .select(`user_id`, { count: 'exact', head: true })
+        .eq('organization_id', organization_id)
+        .eq('active', true)
+        .returns<styp[]>();
+
     const { data: orgData, error: approveError } = await supabaseClient.from(
         'organizations',
     )
-        .update({ state: 'LOCKED' })
+        .update({
+            state: org_members >= required_members ? 'UNLOCKED' : 'LOCKED',
+        })
         .eq('id', organization_id)
         .select(`
             name
@@ -89,7 +97,7 @@ Deno.serve(async (req: Request) => {
         `Congratulations! ${approvedOrgName} has been approved. You are now an official Stuyvesant club!
 
 ${
-            required_members > 0
+            org_members < required_members
                 ? `Once your club is unlocked at ${required_members} members, y`
                 : 'Y'
         }ou can start advertising your club, recruiting members, and holding meetings. We hope you enjoy your club experience at Stuy.` +
