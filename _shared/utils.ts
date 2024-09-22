@@ -47,7 +47,7 @@ export const isValidMeeting = async (
 
     // check room availability
     if (room_id) {
-        if (!organization_id) return ERR;
+        if (!organization_id) return ERR + ' (Code: BAD_ORG)';
         const now = new Date();
         let { data: pendingMeetings, error: pendingMeetingFetchError } =
             await supabaseAdmin
@@ -62,8 +62,8 @@ export const isValidMeeting = async (
                     }-${now.getDate()}`,
                 );
         // failed to fetch
-        if (pendingMeetingFetchError || !pendingMeetings) {
-            return ERR;
+        if (pendingMeetingFetchError) {
+            return ERR + ' (Code: BAD_PEND)';
         }
         if (pendingMeetings.length >= 5) return ERR_MAX_ROOMS;
 
@@ -75,8 +75,8 @@ export const isValidMeeting = async (
             .returns<roomMeta[]>();
 
         // failed to fetch
-        if (meetingFetchError || !meetings) {
-            return ERR;
+        if (meetingFetchError) {
+            return ERR + '(Code: BAD_MEET)';
         }
 
         // editing meeting, exclude the original meeting

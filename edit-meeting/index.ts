@@ -86,7 +86,7 @@ Deno.serve(async (req: Request) => {
         body.end_time,
         body.room_id,
         bodyJson.id,
-        body.organization_id,
+        bodyJson.organization_id,
     );
     if (validationError) {
         return new Response(
