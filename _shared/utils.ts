@@ -18,6 +18,7 @@ export const isValidMeeting = async (
     end_time: string,
     room_id?: number | null,
     meeting_id?: number,
+    organization_id?: number | null,
 ) => {
     // validate dates
     if (!start_time || !end_time) {
@@ -40,6 +41,26 @@ export const isValidMeeting = async (
 
     // check room availability
     if (room_id) {
+        if (!organization_id) return false;
+        const now = new Date();
+        let { data: pendingMeetings, error: pendingMeetingFetchError } =
+            await supabaseAdmin
+                .from('meetings')
+                .select()
+                .eq('organization_id', organization_id)
+                .not('room_id', 'is', null)
+                .gte(
+                    'start_time',
+                    `${now.getFullYear()}-${
+                        now.getMonth() + 1
+                    }-${now.getDate()}`,
+                );
+        // failed to fetch
+        if (pendingMeetingFetchError || !pendingMeetings) {
+            return false;
+        }
+        if (pendingMeetings.length >= 5) return false;
+
         let { data: meetings, error: meetingFetchError } = await supabaseAdmin
             .rpc('get_booked_rooms', {
                 meeting_start: start_time,

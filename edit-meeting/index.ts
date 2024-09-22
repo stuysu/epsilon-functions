@@ -86,11 +86,15 @@ Deno.serve(async (req: Request) => {
         body.end_time,
         body.room_id,
         bodyJson.id,
+        body.organization_id,
     );
     if (!isValid) {
-        return new Response('Invalid meeting time or room.', {
-            status: 400,
-        });
+        return new Response(
+            'Invalid meeting time, length, or room. Please note that clubs may not book more than 5 pending meetings in rooms due to high demand.',
+            {
+                status: 400,
+            },
+        );
     }
 
     type rtyp = {
