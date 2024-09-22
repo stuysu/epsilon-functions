@@ -13,6 +13,12 @@ type mtyp = {
     organizations: { name: string };
 };
 
+const ERR_MEETING_TIME = 'Invalid meeting time or length.';
+const ERR_MAX_ROOMS =
+    'Due to high demand, only 5 future in-person meetings can be booked per club.';
+const ERR_ROOM = 'Invalid meeting room.';
+const ERR = 'Malformed request. Contact it@stuysu.org.';
+
 export const isValidMeeting = async (
     start_time: string,
     end_time: string,
@@ -22,7 +28,7 @@ export const isValidMeeting = async (
 ) => {
     // validate dates
     if (!start_time || !end_time) {
-        return false;
+        return ERR_MEETING_TIME;
     }
     const start = new Date(start_time);
     const end = new Date(end_time);
@@ -31,7 +37,7 @@ export const isValidMeeting = async (
         start.getTime() < (new Date()).getTime() || // meeting starts in past
         end.getTime() - start.getTime() < MIN_LENGTH * 60 * 1000 // meeting is too short (including "negative" length)
     ) {
-        return false;
+        return ERR_MEETING_TIME;
     }
 
     type roomMeta = {
@@ -41,7 +47,7 @@ export const isValidMeeting = async (
 
     // check room availability
     if (room_id) {
-        if (!organization_id) return false;
+        if (!organization_id) return ERR;
         const now = new Date();
         let { data: pendingMeetings, error: pendingMeetingFetchError } =
             await supabaseAdmin
@@ -57,9 +63,9 @@ export const isValidMeeting = async (
                 );
         // failed to fetch
         if (pendingMeetingFetchError || !pendingMeetings) {
-            return false;
+            return ERR;
         }
-        if (pendingMeetings.length >= 5) return false;
+        if (pendingMeetings.length >= 5) return ERR_MAX_ROOMS;
 
         let { data: meetings, error: meetingFetchError } = await supabaseAdmin
             .rpc('get_booked_rooms', {
@@ -70,7 +76,7 @@ export const isValidMeeting = async (
 
         // failed to fetch
         if (meetingFetchError || !meetings) {
-            return false;
+            return ERR;
         }
 
         // editing meeting, exclude the original meeting
@@ -82,7 +88,7 @@ export const isValidMeeting = async (
 
         // room is booked at that time
         if (meetings.find((meeting) => meeting.room_id === room_id)) {
-            return false;
+            return ERR_ROOM;
         }
 
         // check if room is available on that day of week
@@ -105,15 +111,15 @@ export const isValidMeeting = async (
             .single();
         // failed to fetch
         if (!roomData || roomFetchError) {
-            return false;
+            return ERR;
         }
 
         if (!roomData.available_days.includes(dayOfWeek)) {
-            return false;
+            return ERR_ROOM;
         }
     }
 
-    return true;
+    return '';
 };
 
 export const sendOrgEmail = async (

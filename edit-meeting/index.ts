@@ -81,16 +81,16 @@ Deno.serve(async (req: Request) => {
 
     /* removed backend validation because it already exists in RLS */
 
-    const isValid = await isValidMeeting(
+    const validationError = await isValidMeeting(
         body.start_time,
         body.end_time,
         body.room_id,
         bodyJson.id,
         body.organization_id,
     );
-    if (!isValid) {
+    if (validationError) {
         return new Response(
-            'Invalid meeting time, length, or room. Please note that clubs may not book more than 5 pending meetings in rooms due to high demand.',
+            validationError,
             {
                 status: 400,
             },

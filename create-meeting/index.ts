@@ -82,20 +82,17 @@ Deno.serve(async (req: Request) => {
     };
 
     /* time (+ room) validation */
-    const isValid = await isValidMeeting(
+    const validationError = await isValidMeeting(
         body.start_time,
         body.end_time,
         body.room_id,
         undefined,
         body.organization_id,
     );
-    if (!isValid) {
-        return new Response(
-            'Invalid meeting time, length, or room. Please note that clubs may not book more than 5 pending meetings in rooms due to high demand.',
-            {
-                status: 400,
-            },
-        );
+    if (validationError) {
+        return new Response(validationError, {
+            status: 400,
+        });
     }
 
     type rtyp = {
