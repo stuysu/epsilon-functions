@@ -4,7 +4,7 @@ import Transport from './emailTransport.ts';
 const MIN_LENGTH = 30; // minutes
 
 type mtyp = {
-    role: 'CREATOR' | 'ADMIN' | 'FACULTY' | 'MEMBER';
+    role: 'CREATOR' | 'ADMIN' | 'ADVISOR' | 'MEMBER';
     users: {
         first_name: string;
         email: string;
@@ -162,7 +162,7 @@ export const sendOrgEmail = async (
 
         if (
             onlyAdmin &&
-            (member.role === 'MEMBER' || member.role === 'FACULTY')
+            (member.role === 'MEMBER' || member.role === 'ADVISOR')
         ) {
             continue;
         }
