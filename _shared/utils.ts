@@ -9,6 +9,7 @@ type mtyp = {
         first_name: string;
         email: string;
         is_faculty: boolean;
+        allow_notifications: boolean;
     };
     organizations: { name: string };
 };
@@ -137,7 +138,8 @@ export const sendOrgEmail = async (
             users!inner (
                 first_name,
                 email,
-                is_faculty
+                is_faculty,
+                allow_notifications
             ),
             organizations!inner (
                 name
@@ -164,6 +166,10 @@ export const sendOrgEmail = async (
             onlyAdmin &&
             (member.role === 'MEMBER' || member.role === 'ADVISOR')
         ) {
+            continue;
+        }
+
+        if(!member.users.allow_notifications) {
             continue;
         }
 
