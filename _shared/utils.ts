@@ -134,6 +134,7 @@ export const sendOrgEmail = async (
     )
         .select(`
             role,
+            allow_notifications,
             users!inner (
                 first_name,
                 email,
@@ -167,6 +168,10 @@ export const sendOrgEmail = async (
             continue;
         }
 
+        if(!member.allow_notifications) {
+            continue;
+        }
+
         recipientEmails.push(member.users.email);
     }
 
@@ -191,6 +196,7 @@ export const sendMemberEmail = async (
     )
         .select(`
             role,
+            allow_notifications,
             users!inner (
                 first_name,
                 email,
