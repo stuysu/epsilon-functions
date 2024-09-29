@@ -168,7 +168,7 @@ export const sendOrgEmail = async (
             continue;
         }
 
-        if(!member.allow_notifications) {
+        if (!member.allow_notifications) {
             continue;
         }
 
@@ -215,6 +215,7 @@ export const sendMemberEmail = async (
         console.log('Error fetching member.');
         return;
     }
+    if (!memberData.allow_notifications) return;
 
     subject = subject.replace(/{ORG_NAME}/g, memberData.organizations.name);
     text = text.replace(/{ORG_NAME}/g, memberData.organizations.name);
