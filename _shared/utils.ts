@@ -5,6 +5,7 @@ const MIN_LENGTH = 30; // minutes
 
 type mtyp = {
     role: 'CREATOR' | 'ADMIN' | 'ADVISOR' | 'MEMBER';
+    allow_notifications: boolean;
     users: {
         first_name: string;
         email: string;
@@ -134,7 +135,9 @@ export const sendOrgEmail = async (
     )
         .select(`
             role,
-            allow_notifications,
+            membershipnotifications!inner (
+                allow_notifications
+            ),
             users!inner (
                 first_name,
                 email,
@@ -196,7 +199,9 @@ export const sendMemberEmail = async (
     )
         .select(`
             role,
-            allow_notifications,
+            membershipnotifications!inner (
+                allow_notifications
+            ),
             users!inner (
                 first_name,
                 email,
