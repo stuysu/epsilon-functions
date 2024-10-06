@@ -134,7 +134,7 @@ export const sendOrgEmail = async (
     .from("memberships")
     .select(
       `
-            id
+            id,
             role,
             users!inner (
                 first_name,
