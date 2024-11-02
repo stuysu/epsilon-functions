@@ -56,6 +56,7 @@ export const isValidMeeting = async (
                 .select()
                 .eq('organization_id', organization_id)
                 .not('room_id', 'is', null)
+                .neq('id', meeting_id || -1)
                 .gte(
                     'start_time',
                     `${now.getFullYear()}-${

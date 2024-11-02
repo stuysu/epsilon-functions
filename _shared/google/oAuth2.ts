@@ -26,7 +26,7 @@ const setupOauth = async () => {
 
     if (!tokenData || !tokenData.tokens) {
         throw new Error(
-            'You haven\'t yet authenticated with google. Do that first by running: npm run authenticate',
+            "You haven't yet authenticated with google. Do that first by running: npm run authenticate",
         );
     }
 
