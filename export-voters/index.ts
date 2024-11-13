@@ -45,8 +45,8 @@ Deno.serve(async (req: Request) => {
     // verify JWT provided by the user
     try {
         const ecPublicKey = await jose.importSPKI(key, 'RS256');
-        const { payload: userPayload } = await jose.jwtVerify(jwt, ecPublicKey);
-
+        const { payload: { user: userPayload } } = await jose.jwtVerify(jwt, ecPublicKey);
+        
         if (!userPayload.adminPrivileges) {
             return new Response(
                 JSON.stringify({
