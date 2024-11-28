@@ -1,7 +1,11 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import corsHeaders from '../_shared/cors.ts';
 import supabaseAdmin from '../_shared/supabaseAdmin.ts';
-import { sendMemberEmail, sendOrgEmail } from '../_shared/utils.ts';
+import {
+    fetchMemberRequirement,
+    sendMemberEmail,
+    sendOrgEmail,
+} from '../_shared/utils.ts';
 import { footer } from '../_shared/strings.ts';
 
 type BodyType = {
@@ -110,18 +114,7 @@ We hope you enjoy your club experience at Stuy.` + footer;
     if (orgData && orgData.length && !orgDataError) {
         const org = orgData[0];
 
-        type styp = {
-            required_members: number;
-        };
-        const { data: siteSettings } = await supabaseAdmin.from('settings')
-            .select(`
-                required_members
-            `)
-            .returns<styp[]>();
-        let required_members = 0;
-        if (siteSettings) {
-            required_members = siteSettings[0].required_members;
-        }
+        const required_members = await fetchMemberRequirement();
 
         if (
             org.state === 'LOCKED' &&

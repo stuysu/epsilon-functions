@@ -283,3 +283,16 @@ export const sendMemberEmail = async (
         text,
     });
 };
+
+export const fetchMemberRequirement = async () => {
+    type styp = {
+        setting_value: number;
+    };
+    const { data } = await supabaseAdmin.from('settings')
+        .select(`
+                setting_value
+            `).eq('name', 'required_members')
+        .single()
+        .returns<styp>();
+    return data?.setting_value || 0;
+};

@@ -1,5 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import { sendOrgEmail } from '../_shared/utils.ts';
+import { fetchMemberRequirement, sendOrgEmail } from '../_shared/utils.ts';
 import corsHeaders from '../_shared/cors.ts';
 import { footer } from '../_shared/strings.ts';
 
@@ -33,15 +33,7 @@ Deno.serve(async (req: Request) => {
     const { data: userData } = await supabaseClient.auth.getUser(jwt);
     const user = userData.user;
 
-    const { data: siteSettings } = await supabaseClient.from('settings')
-        .select(`
-	required_members
-    `)
-        .returns<styp[]>();
-    let required_members = 0;
-    if (siteSettings) {
-        required_members = siteSettings[0].required_members;
-    }
+    const required_members = await fetchMemberRequirement();
 
     /* Failed to fetch supabase user */
     if (!user) {
