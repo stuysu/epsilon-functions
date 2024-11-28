@@ -53,6 +53,22 @@ Deno.serve(async (req: Request) => {
         { global: { headers: { Authorization: authHeader } } },
     );
 
+    type styp = {
+        setting_value: number;
+    };
+    const { data } = await supabaseAdmin.from('settings')
+        .select(`
+                setting_value
+            `).eq('name', 'charter_deadline')
+        .single()
+        .returns<styp>();
+    if (data?.setting_value) {
+        const deadline = new Date(data.setting_value);
+        if (new Date() > deadline)
+            return new Response(`Chartering for this year has been disabled as of ${deadline.toLocaleString()}.`, { status: 403 });
+    }
+
+
     const jwt = authHeader.split(' ')[1];
     const { data: userData } = await supabaseClient.auth.getUser(jwt);
     const user = userData.user;
