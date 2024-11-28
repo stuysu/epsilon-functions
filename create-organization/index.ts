@@ -21,6 +21,7 @@ type BodyType = {
     is_returning: boolean;
     returning_info: string;
     fair?: boolean;
+    faculty_email?: string;
 };
 
 const RESERVED_PATHS = [
