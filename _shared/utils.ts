@@ -206,12 +206,14 @@ export const sendOrgEmail = async (
     subject = subject.replace(/{ORG_NAME}/g, orgName);
     text = text.replace(/{ORG_NAME}/g, orgName);
 
-    await Transport.sendMail({
-        from: Deno.env.get('NODEMAILER_FROM')!,
-        bcc: recipientEmails,
-        subject,
-        text,
-    });
+    if (recipientEmails?.length > 0) {
+        await Transport.sendMail({
+            from: Deno.env.get('NODEMAILER_FROM')!,
+            bcc: recipientEmails,
+            subject,
+            text,
+        });
+    }
 };
 
 export const sendMemberEmail = async (
