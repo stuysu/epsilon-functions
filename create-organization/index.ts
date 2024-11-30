@@ -64,10 +64,13 @@ Deno.serve(async (req: Request) => {
         .returns<styp>();
     if (data?.setting_value) {
         const deadline = new Date(data.setting_value);
-        if (new Date() > deadline)
-            return new Response(`Chartering for this year has been disabled as of ${deadline.toLocaleString()}.`, { status: 403 });
+        if (new Date() > deadline) {
+            return new Response(
+                `Chartering for this year has been disabled as of ${deadline.toLocaleString()}.`,
+                { status: 403 },
+            );
+        }
     }
-
 
     const jwt = authHeader.split(' ')[1];
     const { data: userData } = await supabaseClient.auth.getUser(jwt);
