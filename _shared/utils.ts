@@ -49,25 +49,36 @@ export const isValidMeeting = async (
     // check room availability
     if (room_id) {
         if (!organization_id) return ERR + ' (Code: BAD_ORG)';
-        const now = new Date();
-        let { data: pendingMeetings, error: pendingMeetingFetchError } =
-            await supabaseAdmin
-                .from('meetings')
-                .select()
-                .eq('organization_id', organization_id)
-                .not('room_id', 'is', null)
-                .neq('id', meeting_id || -1)
-                .gte(
-                    'start_time',
-                    `${now.getFullYear()}-${
-                        now.getMonth() + 1
-                    }-${now.getDate()}`,
-                );
-        // failed to fetch
-        if (pendingMeetingFetchError) {
-            return ERR + ' (Code: BAD_PEND)';
+        let { data: organization, error: organizationFetchError } =
+            await supabaseAdmin.from('organizations').select('state').eq(
+                'id',
+                organization_id,
+            ).limit(1).single();
+        if (organizationFetchError) {
+            console.log(organizationFetchError);
+            return ERR + ' (Code: BAD_ORG_FETCH)';
         }
-        if (pendingMeetings.length >= 5) return ERR_MAX_ROOMS;
+        if (organization.state !== 'ADMIN') {
+            const now = new Date();
+            let { data: pendingMeetings, error: pendingMeetingFetchError } =
+                await supabaseAdmin
+                    .from('meetings')
+                    .select()
+                    .eq('organization_id', organization_id)
+                    .not('room_id', 'is', null)
+                    .neq('id', meeting_id || -1)
+                    .gte(
+                        'start_time',
+                        `${now.getFullYear()}-${
+                            now.getMonth() + 1
+                        }-${now.getDate()}`,
+                    );
+            // failed to fetch
+            if (pendingMeetingFetchError) {
+                return ERR + ' (Code: BAD_PEND)';
+            }
+            if (pendingMeetings.length >= 5) return ERR_MAX_ROOMS;
+        }
 
         let { data: meetings, error: meetingFetchError } = await supabaseAdmin
             .rpc('get_booked_rooms', {
