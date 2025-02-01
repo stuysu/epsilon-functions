@@ -31,12 +31,13 @@ Deno.serve(async (req: Request) => {
     const { data: verifiedUser, error: verifiedUserError } =
         await supabaseClient
             .from('permissions')
-            .select('permission')
-            .eq('user_id', user.id)
-            .single();
+            .select('permission,users!inner(id)')
+            .eq('users.email', user.email)
+            .maybeSingle();
 
     if (verifiedUserError) {
-        return new Response('Failed to fetch user id.', {
+        console.log(verifiedUserError);
+        return new Response(`Failed to fetch user id.`, {
             status: 500,
         });
     }
@@ -71,17 +72,21 @@ Deno.serve(async (req: Request) => {
     }
 
     if (messageData.verified_at !== null) {
-        return new Response('Letter already approved!', { status: 304 });
+        return new Response('Letter already approved!', { status: 400 });
     }
 
     const currentTime = datetime().toZonedTime('America/New_York').toISO();
 
     const { error: messageUpdateError } = await supabaseClient
         .from('valentinesmessages')
-        .update({ verified_at: currentTime, verified_by: user.id })
+        .update({
+            verified_at: currentTime,
+            verified_by: verifiedUser.users.id,
+        })
         .eq('id', body.message_id);
 
     if (messageUpdateError) {
+        console.log(messageUpdateError);
         return new Response('Failed to update message', {
             status: 500,
         });

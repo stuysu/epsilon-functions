@@ -34,9 +34,9 @@ Deno.serve(async (req: Request) => {
     const { data: verifiedUser, error: verifiedUserError } =
         await supabaseClient
             .from('permissions')
-            .select('permission')
-            .eq('user_id', user.id)
-            .single();
+            .select('permission,users!inner(id)')
+            .eq('users.email', user.email)
+            .maybeSingle();
 
     if (verifiedUserError) {
         return new Response('Failed to fetch user id.', {
