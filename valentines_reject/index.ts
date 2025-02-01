@@ -8,6 +8,7 @@ import { safeSupabaseQuery } from '../_shared/utils.ts';
 
 type BodyType = {
     message_id: number;
+    reason?: string;
 };
 
 Deno.serve(async (req: Request) => {
@@ -55,11 +56,8 @@ Deno.serve(async (req: Request) => {
         return new Response('Permission Denied', { status: 403 });
     }
 
-    const bodyJson = await req.json();
+    const body = await req.json() as BodyType;
 
-    const body: BodyType = {
-        message_id: bodyJson.message_id,
-    };
     if (!body.message_id) {
         return new Response('No message id provided.', { status: 400 });
     }
@@ -93,7 +91,7 @@ Deno.serve(async (req: Request) => {
         );
         const text = `Hi ${sender.first_name},
 
-Your message has been removed from Epsilon Valentines with the following reason: REASON
+Your message has been removed from Epsilon Valentines with the following reason: ${body.reason || "[no reason provided]"}
 
 Below are the details of the message in question:
 Recipient: ${receiver.email}
