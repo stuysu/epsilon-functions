@@ -2,6 +2,9 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import corsHeaders from '../_shared/cors.ts';
 
 import { datetime } from 'https://deno.land/x/ptera/mod.ts';
+import Transport from '../_shared/emailTransport.ts';
+import { footer } from '../_shared/strings.ts';
+import { safeSupabaseQuery } from '../_shared/utils.ts';
 
 type BodyType = {
     message_id: number;
@@ -57,10 +60,13 @@ Deno.serve(async (req: Request) => {
     const body: BodyType = {
         message_id: bodyJson.message_id,
     };
+    if (!body.message_id) {
+        return new Response('No message id provided.', { status: 400 });
+    }
 
     const { data: messageData, error: messageDataError } = await supabaseClient
         .from('valentinesmessages')
-        .select('verified_at')
+        .select('sender,receiver,message')
         .eq('id', body.message_id)
         .single();
 
@@ -69,28 +75,52 @@ Deno.serve(async (req: Request) => {
             status: 500,
         });
     }
+    try {
+        const sender = await safeSupabaseQuery(
+            supabaseClient.from('users')
+                .select('email,first_name')
+                .eq('id', messageData.sender)
+                .single(),
+        );
+        const receiver = await safeSupabaseQuery(
+            supabaseClient.from('users')
+                .select('email')
+                .eq('id', messageData.receiver)
+                .single(),
+        );
+        const text = `Hi ${sender.first_name},
 
-    if (messageData.verified_at !== null) {
-        return new Response('Letter already approved!', { status: 304 });
-    }
+Your message has been removed from Epsilon Valentines with the following reason: REASON
 
-    const currentTime = datetime().toZonedTime('America/New_York').toISO();
+Below are the details of the message in question:
+Recipient: ${receiver.email}
+Content: ${messageData.message || '[empty message]'}
 
-    const { error: messageUpdateError } = await supabaseClient
-        .from('valentinesmessages')
-        .update({ verified_at: currentTime, verified_by: user.id })
-        .eq('id', body.message_id);
-
-    if (messageUpdateError) {
-        return new Response('Failed to update message', {
-            status: 500,
+You may submit a new message if desired.` + footer;
+        await Transport.sendMail({
+            from: Deno.env.get('NODEMAILER_FROM')!,
+            to: sender.email,
+            subject: '[Epsilon Valentines] Message Removed',
+            text,
         });
-    }
+        const { error: messageDeleteError } = await supabaseClient
+            .from('valentinesmessages')
+            .delete()
+            .eq('id', body.message_id);
 
-    return new Response(
-        JSON.stringify({}),
-        {
-            headers: { 'Content-Type': 'application/json' },
-        },
-    );
+        if (messageDeleteError) {
+            return new Response('Failed to delete message', {
+                status: 500,
+            });
+        }
+
+        return new Response(
+            JSON.stringify({}),
+            {
+                headers: { 'Content-Type': 'application/json' },
+            },
+        );
+    } catch (_error) {
+        return new Response('Failed to fetch users', { status: 500 });
+    }
 });

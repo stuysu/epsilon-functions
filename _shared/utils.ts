@@ -309,3 +309,11 @@ export const fetchMemberRequirement = async () => {
         .returns<styp>();
     return data?.setting_value || 0;
 };
+
+export const safeSupabaseQuery = async (clientPromise: Promise<any>) => {
+    const { data, error } = await clientPromise;
+    if (error) {
+        throw error;
+    }
+    return data;
+};
