@@ -66,7 +66,7 @@ Deno.serve(async (req: Request) => {
 
     const { data: messageData, error: messageDataError } = await supabaseClient
         .from('valentinesmessages')
-        .select('sender,receiver,message')
+        .select('sender,receiver,message,verified_by,verified_at')
         .eq('id', body.message_id)
         .single();
 
@@ -74,6 +74,9 @@ Deno.serve(async (req: Request) => {
         return new Response('Failed to fetch message', {
             status: 500,
         });
+    }
+    if (messageData.verified_by && messageData.verified_at) {
+        return new Response('Message already approved.', { status: 400 });
     }
     try {
         const sender = await safeSupabaseQuery(
