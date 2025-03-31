@@ -142,7 +142,7 @@ Start Date: ${startTime} EST
 End Date: ${endTime} EST
 Room: ${createMeetingData[0].rooms?.name || 'Virtual'}` + footer;
 
-    const emailSubject = `{ORG_NAME} scheduled a meeting | Epsilon`;
+    const emailSubject = `{ORG_NAME} scheduled a meeting | Sigma`;
 
     sendOrgEmail(
         body.organization_id,

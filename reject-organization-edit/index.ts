@@ -94,7 +94,7 @@ Deno.serve(async (req: Request) => {
 For more information, please check your club admin panel's messages tab.` +
         footer;
 
-    const emailSubject = `${rejectedOrgName}: Update Rejected | Epsilon`;
+    const emailSubject = `${rejectedOrgName}: Update Rejected | Sigma`;
 
     sendOrgEmail(organization_id, emailSubject, emailBody, false, true);
 

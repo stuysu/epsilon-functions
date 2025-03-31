@@ -93,7 +93,7 @@ Congrats! You are now a member of {ORG_NAME}.
 
 We hope you enjoy your club experience at Stuy.` + footer;
 
-    const emailSubject = `Membership Approved: {ORG_NAME} | Epsilon`;
+    const emailSubject = `Membership Approved: {ORG_NAME} | Sigma`;
 
     sendMemberEmail(member_id, emailSubject, emailBody);
 
@@ -129,7 +129,7 @@ We hope you enjoy your club experience at Stuy.` + footer;
 You can begin creating meetings, making posts, and your organization will be displayed on the club catalog.
 
 We hope you enjoy your club experience at Stuy!` + footer;
-            const subject = `Organization Unlocked: {ORG_NAME} | Epsilon`;
+            const subject = `Organization Unlocked: {ORG_NAME} | Sigma`;
 
             sendOrgEmail(orgId, subject, emailText, false, true);
 

@@ -1,10 +1,8 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import corsHeaders from '../_shared/cors.ts';
-import { sendOrgEmail } from '../_shared/utils.ts';
+import { isValidMeeting, sendOrgEmail } from '../_shared/utils.ts';
 
 import { datetime } from 'https://deno.land/x/ptera/mod.ts';
-
-import { isValidMeeting } from '../_shared/utils.ts';
 import { footer } from '../_shared/strings.ts';
 
 type BodyType = {
@@ -139,7 +137,7 @@ Start Date: ${startTime} EST
 End Date: ${endTime} EST
 Room: ${updateMeetingData[0].rooms?.name || 'Virtual'}` + footer;
 
-    const emailSubject = `{ORG_NAME} updated a meeting | Epsilon`;
+    const emailSubject = `{ORG_NAME} updated a meeting | Sigma`;
 
     sendOrgEmail(updateMeetingData[0].organization_id, emailSubject, emailText);
 

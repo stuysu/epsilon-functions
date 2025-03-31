@@ -90,7 +90,7 @@ Start Date: ${startTime} EST
 End Date: ${endTime} EST
 Room: ${oldMeetingData[0].rooms?.name || 'Virtual'}` + footer;
 
-    const emailSubject = `{ORG_NAME} canceled a meeting | Epsilon`;
+    const emailSubject = `{ORG_NAME} canceled a meeting | Sigma`;
 
     const oldOrgId = oldMeetingData[0].organization_id;
     sendOrgEmail(oldOrgId, emailSubject, emailText);

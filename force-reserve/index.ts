@@ -115,7 +115,7 @@ Deno.serve(async (req: Request) => {
 We sincerely apologize for the inconvenience, and we hope you are able to schedule the meeting in a different room.` +
             footer;
 
-        const emailSubject = `{ORG_NAME}: Meeting Removed | Epsilon`;
+        const emailSubject = `{ORG_NAME}: Meeting Removed | Sigma`;
 
         sendOrgEmail(orgId, emailSubject, emailBody, false, true);
     }

@@ -142,7 +142,7 @@ You can view this message at ${
         Transport.sendMail({
             from: Deno.env.get('NODEMAILER_FROM')!,
             to: admin.users.email,
-            subject: `${orgName}: New Administrator Message | Epsilon`,
+            subject: `${orgName}: New Administrator Message | Sigma`,
             text: emailBody,
         })
             .catch((error: unknown) => {

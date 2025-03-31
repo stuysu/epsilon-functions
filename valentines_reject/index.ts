@@ -1,7 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import corsHeaders from '../_shared/cors.ts';
-
-import { datetime } from 'https://deno.land/x/ptera/mod.ts';
 import Transport from '../_shared/emailTransport.ts';
 import { footer } from '../_shared/strings.ts';
 import { safeSupabaseQuery } from '../_shared/utils.ts';
@@ -91,7 +89,9 @@ Deno.serve(async (req: Request) => {
         );
         const text = `Hi ${sender.first_name},
 
-Your message has been removed from Epsilon Valentines with the following reason: ${body.reason || "[no reason provided]"}
+Your message has been removed from Sigma Valentines with the following reason: ${
+            body.reason || '[no reason provided]'
+        }
 
 Below are the details of the message in question:
 Recipient: ${receiver.email}
@@ -101,7 +101,7 @@ You may submit a new message if desired.` + footer;
         await Transport.sendMail({
             from: Deno.env.get('NODEMAILER_FROM')!,
             to: sender.email,
-            subject: '[Epsilon Valentines] Message Removed',
+            subject: '[Sigma Valentines] Message Removed',
             text,
         });
         const { error: messageDeleteError } = await supabaseClient
