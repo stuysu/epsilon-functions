@@ -178,7 +178,7 @@ We are sincerely apologize for the inconvenience, and we hope you are able to re
                     Transport.sendMail({
                         from: Deno.env.get('NODEMAILER_FROM')!,
                         to: admin.users.email,
-                        subject: `${value.name}: Meetings Removed | Sigma`,
+                        subject: `${value.name}: Meetings Removed | Epsilon`,
                         text: emailBody,
                     });
                 }

@@ -125,7 +125,7 @@ This email is to let you know that ${siteUser.first_name} ${siteUser.last_name} 
         }. You can approve their request at ${Deno.env.get('SITE_URL')}/${
             orgData[0].url
         }/admin/member-requests` + footer;
-    const emailSubject = `${orgData[0].name}: New Join Request | Sigma`;
+    const emailSubject = `${orgData[0].name}: New Join Request | Epsilon`;
 
     sendOrgEmail(organization_id, emailSubject, emailBody, false, true);
 

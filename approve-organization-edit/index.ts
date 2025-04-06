@@ -100,7 +100,7 @@ Deno.serve(async (req: Request) => {
     const emailBody =
         `Your organization update request for ${updatedOrgName} has been approved.` +
         footer;
-    const emailSubject = `${updatedOrgName}: Charter Update Approved | Sigma`;
+    const emailSubject = `${updatedOrgName}: Charter Update Approved | Epsilon`;
 
     sendOrgEmail(organization_id, emailSubject, emailBody, false, true);
 

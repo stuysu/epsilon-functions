@@ -101,7 +101,7 @@ Deno.serve(async (req: Request) => {
     const body: BodyType = await req.json();
     if (RESERVED_PATHS.indexOf(body.url) !== -1) {
         return new Response(
-            'You may not register an Sigma URL that is already in use.',
+            'You may not register an Epsilon URL that is already in use.',
             { status: 400 },
         );
     }

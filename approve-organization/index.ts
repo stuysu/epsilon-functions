@@ -95,7 +95,7 @@ ${
         }ou can start advertising your club, recruiting members, and holding meetings. We hope you enjoy your club experience at Stuy.` +
         footer;
 
-    const subject = `${approvedOrgName}: Charter Approved | Sigma`;
+    const subject = `${approvedOrgName}: Charter Approved | Epsilon`;
 
     sendOrgEmail(organization_id, subject, emailBody, false, true);
 

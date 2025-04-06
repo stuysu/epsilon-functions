@@ -119,7 +119,7 @@ Your charter for ${rejectedOrgName} has been rejected.` + footer;
         Transport.sendMail({
             from: Deno.env.get('NODEMAILER_FROM')!,
             to: admin.users.email,
-            subject: `${rejectedOrgName}: Charter Rejected | Sigma`,
+            subject: `${rejectedOrgName}: Charter Rejected | Epsilon`,
             text: emailBody,
         })
             .catch((error: unknown) => {

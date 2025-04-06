@@ -113,7 +113,7 @@ You can view this strike at ${Deno.env.get('SITE_URL')}/${
 
 If you would like to dispute this strike, please contact clubpub@stuysu.org.
 ` + footer;
-    const emailSubject = `{ORG_NAME}: Strike Received | Sigma`;
+    const emailSubject = `{ORG_NAME}: Strike Received | Epsilon`;
 
     sendOrgEmail(organization_id, emailSubject, emailBody, false, true);
 
