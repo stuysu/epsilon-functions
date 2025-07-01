@@ -13,7 +13,7 @@ Deno.serve(async (req: Request) => {
     if (req.method === 'OPTIONS') {
         return new Response('ok', { headers: corsHeaders });
     }
-    
+
     const authHeader = req.headers.get('Authorization')!;
     const supabaseClient = createClient(
         Deno.env.get('SUPABASE_URL') ?? '',
@@ -31,34 +31,39 @@ Deno.serve(async (req: Request) => {
     };
 
     /** check if user already exists **/
-    
-    const { data: userData, error: userError } = await supabaseClient.from("users")
+
+    const { data: userData, error: userError } = await supabaseClient.from(
+        'users',
+    )
         .select()
-        .eq("email", body.email);
+        .eq('email', body.email);
 
     if (userData && userData.length > 0) {
-        return new Response(JSON.stringify({ error: "User already exists" }), {
+        return new Response(JSON.stringify({ error: 'User already exists' }), {
             status: 400,
             headers: corsHeaders,
         });
-    }
-
-    else {
-        const { error: createUserError } = await supabaseClient.from("users")
+    } else {
+        const { error: createUserError } = await supabaseClient.from('users')
             .insert(body)
             .select();
-        
-        if(createUserError) {
-            return new Response(JSON.stringify({ error: "Error creating user", details: {
-        message: createUserError?.message,
-        hint: createUserError?.hint,
-        code: createUserError?.code,
-        details: createUserError?.details
-      }
- }), { status: 500, headers: corsHeaders });
+
+        if (createUserError) {
+            return new Response(
+                JSON.stringify({
+                    error: 'Error creating user',
+                    details: {
+                        message: createUserError?.message,
+                        hint: createUserError?.hint,
+                        code: createUserError?.code,
+                        details: createUserError?.details,
+                    },
+                }),
+                { status: 500, headers: corsHeaders },
+            );
         }
     }
-    
+
     return new Response(
         JSON.stringify({
             success: true,

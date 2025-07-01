@@ -91,7 +91,9 @@ Deno.serve(async (req: Request) => {
         );
         const text = `Hi ${sender.first_name},
 
-Your message has been removed from Epsilon Valentines with the following reason: ${body.reason || "[no reason provided]"}
+Your message has been removed from Epsilon Valentines with the following reason: ${
+            body.reason || '[no reason provided]'
+        }
 
 Below are the details of the message in question:
 Recipient: ${receiver.email}
