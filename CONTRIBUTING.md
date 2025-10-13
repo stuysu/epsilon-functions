@@ -3,6 +3,8 @@
 At this time, StuySU IT is **not** accepting external contributions.
 The following documentation is meant for Directors.
 
+As of 10/13/25, Epsilon functions are stored at `/srv/supabase/supabase/docker/volumes/functions` on the Supabase DigitalOcean server.
+
 ## Development Stack
 
 [Supabase Edge Functions](https://supabase.com/docs/guides/functions) are
