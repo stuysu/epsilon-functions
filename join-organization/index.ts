@@ -15,7 +15,7 @@ Deno.serve(async (req: Request) => {
     const {
         organization_id,
     }: BodyType = await req.json();
-
+   
     if (!organization_id) {
         return new Response('Missing field', { status: 400 });
     }
@@ -127,7 +127,9 @@ This email is to let you know that ${siteUser.first_name} ${siteUser.last_name} 
         }/admin/member-requests` + footer;
     const emailSubject = `${orgData[0].name}: New Join Request | Epsilon`;
 
-    sendOrgEmail(organization_id, emailSubject, emailBody, false, true);
+    console.log('[JOIN_ORG] calling sendOrgEmail');
+    await sendOrgEmail(organization_id, emailSubject, emailBody, false, true);
+    console.log('[JOIN_ORG] sendOrgEmail done');
 
     return new Response(
         JSON.stringify({
