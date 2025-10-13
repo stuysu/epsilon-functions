@@ -162,9 +162,10 @@ export const sendOrgEmail = async (
             .eq('organization_id', orgId);
 
     if (membershipsError || !membershipsData || !membershipsData.length) {
-        console.log('Error fetching members.');
+        console.log(`[sendOrgEmail] org=${orgId} no members or fetch error; err=${membershipsError ? membershipsError.message || membershipsError : 'none'}`);
         return;
     }
+    console.log(`[sendOrgEmail] org=${orgId} memberships=${membershipsData.length}`);
 
     const memberIds = membershipsData.map((membership) => membership.id);
 
@@ -174,13 +175,14 @@ export const sendOrgEmail = async (
             .select('membership_id, allow_notifications')
             .in('membership_id', memberIds);
 
-    if (notificationsError || !notificationsData || !notificationsData.length) {
-        console.log('Error fetching notifications.');
-        return;
+    if (notificationsError) {
+        console.log('[sendOrgEmail] Error fetching notifications.', notificationsError);
     }
+    const notifications = notificationsData ?? [];
+    console.log(`[sendOrgEmail] org=${orgId} notification_rows=${notifications.length}`);
 
     const memberData = membershipsData.map((membership) => {
-        const notification = notificationsData.find(
+        const notification = notifications.find(
             (n) => n.membership_id === membership.id,
         );
         return {
@@ -191,8 +193,14 @@ export const sendOrgEmail = async (
         };
     });
 
-    const recipientEmails = [];
+    const recipientEmails: string[] = [];
     const orgName = memberData[0].organizations.name;
+
+    const roleStats = memberData.reduce((acc: Record<string, number>, m) => {
+        acc[m.role] = (acc[m.role] || 0) + 1;
+        return acc;
+    }, {});
+    console.log(`[sendOrgEmail] org=${orgId} role_stats=${JSON.stringify(roleStats)} onlyAdmin=${!!onlyAdmin} notifyFaculty=${!!notifyFaculty}`);
 
     for (const member of memberData) {
         // do not notify faculty
@@ -217,13 +225,22 @@ export const sendOrgEmail = async (
     subject = subject.replace(/{ORG_NAME}/g, orgName);
     text = text.replace(/{ORG_NAME}/g, orgName);
 
+    console.log(`[sendOrgEmail] org=${orgId} recipients_after_filters=${recipientEmails.length} onlyAdmin=${!!onlyAdmin} notifyFaculty=${!!notifyFaculty}`);
+
     if (recipientEmails?.length > 0) {
-        await Transport.sendMail({
-            from: Deno.env.get('NODEMAILER_FROM')!,
-            bcc: recipientEmails,
-            subject,
-            text,
-        });
+        try {
+            await Transport.sendMail({
+                from: Deno.env.get('NODEMAILER_FROM')!,
+                bcc: recipientEmails,
+                subject,
+                text,
+            });
+            console.log('[sendOrgEmail] sendMail OK');
+        } catch (e) {
+            console.error('[sendOrgEmail] sendMail failed', (e as Error)?.message || e);
+        }
+    } else {
+        console.log('[sendOrgEmail] No recipients; skipping send.');
     }
 };
 
