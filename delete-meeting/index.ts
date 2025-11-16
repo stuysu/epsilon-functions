@@ -54,7 +54,12 @@ Deno.serve(async (req: Request) => {
     /* collect old meeting data */
     const { data: oldMeetingData, error: oldMeetingError } =
         await supabaseClient.from('meetings')
-            .select(`*`)
+            .select(`
+                *,
+                rooms (
+                    name
+                )
+            `)
             .eq('id', body.id);
 
     if (oldMeetingError || !oldMeetingData || !oldMeetingData.length) {
@@ -88,7 +93,8 @@ Title: ${oldMeetingData[0].title}
 Description: ${oldMeetingData[0].description}
 Start Date: ${startTime} EST
 End Date: ${endTime} EST
-Room: ${oldMeetingData[0].rooms?.name || 'Virtual'}` + footer;
+Room: ${oldMeetingData[0].rooms?.name || 'Virtual'}
+Advisor: ${oldMeetingData[0].advisor || 'None'}` + footer;
 
     const emailSubject = `{ORG_NAME} canceled a meeting | Epsilon`;
 

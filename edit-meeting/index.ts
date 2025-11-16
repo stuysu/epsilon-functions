@@ -14,6 +14,7 @@ type BodyType = {
     start_time: string;
     end_time: string;
     is_public: boolean;
+    advisor?: string;
 };
 
 const returnSelect = `
@@ -21,6 +22,7 @@ const returnSelect = `
             is_public,
             title,
             description,
+            advisor,
             start_time,
             end_time,
             organization_id,
@@ -77,6 +79,7 @@ Deno.serve(async (req: Request) => {
         start_time: bodyJson.start_time,
         end_time: bodyJson.end_time,
         is_public: bodyJson.is_public,
+        advisor: bodyJson.advisor?.trim() || null
     };
 
     /* removed backend validation because it already exists in RLS */
@@ -102,6 +105,7 @@ Deno.serve(async (req: Request) => {
         is_public: boolean;
         title: string;
         description: string;
+        advisor: string | null;
         start_time: string;
         end_time: string;
         organization_id: number;
@@ -137,7 +141,8 @@ Title: ${body.title}
 Description: ${body.description}
 Start Date: ${startTime} EST
 End Date: ${endTime} EST
-Room: ${updateMeetingData[0].rooms?.name || 'Virtual'}` + footer;
+Room: ${updateMeetingData[0].rooms?.name || 'Virtual'}
+Advisor: ${updateMeetingData[0].advisor || 'None'}` + footer;
 
     const emailSubject = `{ORG_NAME} updated a meeting | Epsilon`;
 
