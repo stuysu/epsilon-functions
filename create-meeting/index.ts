@@ -24,7 +24,7 @@ const returnSelect = `
             is_public,
             title,
             description,
-            faculty_advisor,
+            advisor,
             start_time,
             end_time,
             rooms (
@@ -103,6 +103,7 @@ Deno.serve(async (req: Request) => {
         is_public: boolean;
         title: string;
         description: string;
+        advisor: string | null;
         start_time: string;
         end_time: string;
         rooms: {
@@ -121,7 +122,7 @@ Deno.serve(async (req: Request) => {
                 start_time: body.start_time,
                 end_time: body.end_time,
                 is_public: body.is_public,
-                faculty_advisor: body.advisor ?? null,
+                advisor: body.advisor?.trim() || null,
             })
             .select(returnSelect)
             .returns<rtyp[]>();
@@ -144,7 +145,8 @@ Title: ${body.title}
 Description: ${body.description}
 Start Date: ${startTime} EST
 End Date: ${endTime} EST
-Room: ${createMeetingData[0].rooms?.name || 'Virtual'}` + footer;
+Room: ${createMeetingData[0].rooms?.name || 'Virtual'}
+Advisor: ${createMeetingData[0].advisor || 'None'}` + footer;
 
     const emailSubject = `{ORG_NAME} scheduled a meeting | Epsilon`;
 
