@@ -14,7 +14,7 @@ type BodyType = {
     start_time: string;
     end_time: string;
     is_public: boolean;
-    advisor?: string;
+    advisor: string;
 };
 
 const returnSelect = `
@@ -73,11 +73,6 @@ Deno.serve(async (req: Request) => {
     const bodyJson = await req
         .json(); /* bodyJson here also includes: notify-faculty and id <- meeting id */
 
-    const advisor =
-        typeof bodyJson.advisor === "string" && bodyJson.advisor.trim().length > 0
-            ? bodyJson.advisor.trim()
-            : null;
-
     const body: BodyType = {
         title: bodyJson.title,
         description: bodyJson.description,
@@ -85,7 +80,7 @@ Deno.serve(async (req: Request) => {
         start_time: bodyJson.start_time,
         end_time: bodyJson.end_time,
         is_public: bodyJson.is_public,
-        advisor: advisor
+        advisor: bodyJson.advisor,
     };
 
     /* removed backend validation because it already exists in RLS */
@@ -111,7 +106,7 @@ Deno.serve(async (req: Request) => {
         is_public: boolean;
         title: string;
         description: string;
-        advisor: string | null;
+        advisor: string;
         start_time: string;
         end_time: string;
         organization_id: number;

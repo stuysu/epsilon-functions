@@ -16,7 +16,7 @@ type BodyType = {
     end_time: string;
     is_public: boolean;
     notify_faculty?: boolean;
-    advisor?: string;
+    advisor: string;
 };
 
 const returnSelect = `
@@ -103,7 +103,7 @@ Deno.serve(async (req: Request) => {
         is_public: boolean;
         title: string;
         description: string;
-        advisor: string | null;
+        advisor: string;
         start_time: string;
         end_time: string;
         rooms: {
@@ -122,10 +122,7 @@ Deno.serve(async (req: Request) => {
                 start_time: body.start_time,
                 end_time: body.end_time,
                 is_public: body.is_public,
-                advisor: 
-                    typeof body.advisor === "string" && body.advisor.trim().length > 0
-                        ? body.advisor.trim()
-                        : null,
+                advisor: body.advisor,
             })
             .select(returnSelect)
             .returns<rtyp[]>();
