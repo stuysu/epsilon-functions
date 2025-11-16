@@ -14,6 +14,7 @@ type BodyType = {
     start_time: string;
     end_time: string;
     is_public: boolean;
+    advisor?: string;
 };
 
 const returnSelect = `
@@ -21,6 +22,7 @@ const returnSelect = `
             is_public,
             title,
             description,
+            faculty_advisor,
             start_time,
             end_time,
             organization_id,
@@ -77,6 +79,7 @@ Deno.serve(async (req: Request) => {
         start_time: bodyJson.start_time,
         end_time: bodyJson.end_time,
         is_public: bodyJson.is_public,
+        advisor: bodyJson.advisor,
     };
 
     /* removed backend validation because it already exists in RLS */
@@ -113,7 +116,10 @@ Deno.serve(async (req: Request) => {
     };
     const { data: updateMeetingData, error: updateMeetingError } =
         await supabaseClient.from('meetings')
-            .update(body)
+            .update({
+                ...body,
+                faculty_advisor: body.advisor ?? null,
+            })
             .eq('id', bodyJson.id)
             .select(returnSelect)
             .returns<rtyp[]>();
