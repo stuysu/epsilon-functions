@@ -72,6 +72,12 @@ Deno.serve(async (req: Request) => {
 
     const bodyJson = await req
         .json(); /* bodyJson here also includes: notify-faculty and id <- meeting id */
+
+    const advisor =
+        typeof bodyJson.advisor === "string" && bodyJson.advisor.trim().length > 0
+            ? bodyJson.advisor.trim()
+            : null;
+
     const body: BodyType = {
         title: bodyJson.title,
         description: bodyJson.description,
@@ -79,7 +85,7 @@ Deno.serve(async (req: Request) => {
         start_time: bodyJson.start_time,
         end_time: bodyJson.end_time,
         is_public: bodyJson.is_public,
-        advisor: bodyJson.advisor?.trim() || null
+        advisor: advisor
     };
 
     /* removed backend validation because it already exists in RLS */

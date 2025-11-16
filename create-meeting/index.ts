@@ -122,7 +122,10 @@ Deno.serve(async (req: Request) => {
                 start_time: body.start_time,
                 end_time: body.end_time,
                 is_public: body.is_public,
-                advisor: body.advisor?.trim() || null,
+                advisor: 
+                    typeof body.advisor === "string" && body.advisor.trim().length > 0
+                        ? body.advisor.trim()
+                        : null,
             })
             .select(returnSelect)
             .returns<rtyp[]>();
