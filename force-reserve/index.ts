@@ -77,6 +77,24 @@ Deno.serve(async (req: Request) => {
         return new Response('Failed to fetch meetings', { status: 500 });
     }
 
+    // check if room is AIS-locked on the booking day
+    const { data: roomData, error: roomFetchError } = await supabaseClient
+        .from('rooms')
+        .select('ais_days')
+        .eq('id', room_id)
+        .single();
+
+    if (roomFetchError || !roomData) {
+        return new Response('Failed to fetch room.', { status: 500 });
+    }
+
+    const daysOfWeek = ['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY'];
+    const bookingDay = daysOfWeek[new Date(start_time).getDay()];
+
+    if (roomData.ais_days && roomData.ais_days.includes(bookingDay)) {
+        return new Response('This room is reserved for AIS on this day and cannot be booked.', { status: 400 });
+    }
+
     const conflictingMeeting = meetings.find((meeting) =>
         meeting.room_id === room_id
     );

@@ -19,6 +19,7 @@ type BodyType = {
         | 'SATURDAY'
         | 'SUNDAY'
     )[];
+    ais_days: string[];
 };
 
 Deno.serve(async (req: Request) => {
@@ -33,6 +34,7 @@ Deno.serve(async (req: Request) => {
         approval_required,
         comments,
         available_days,
+        ais_days,
     }: BodyType = await req.json();
 
     if (!room_id || !available_days || !floor || !name) {
@@ -81,6 +83,7 @@ Deno.serve(async (req: Request) => {
             approval_required,
             comments,
             available_days: available_days.join(', '),
+            ais_days,
         })
         .eq('id', room_id);
 
