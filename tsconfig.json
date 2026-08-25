@@ -1,0 +1,22 @@
+{
+	"compilerOptions": {
+		"target": "ES2022",
+		"module": "NodeNext",
+		"moduleResolution": "NodeNext",
+		"strict": true,
+		"esModuleInterop": true,
+		"skipLibCheck": true,
+		"resolveJsonModule": true,
+		"lib": ["DOM", "DOM.Iterable", "ES2022"],
+		"types": ["deno", "node"],
+		"paths": {
+			"ptera": ["./types/ptera.d.ts"],
+			"@supabase/supabase-js": [
+				"./node_modules/@supabase/supabase-js/dist/index.d.mts"
+			]
+		},
+		"noEmit": true
+	},
+	"include": ["**/*.ts", "**/*.tsx", "types/**/*.d.ts"],
+	"exclude": ["node_modules"]
+}

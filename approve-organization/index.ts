@@ -1,105 +1,98 @@
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import { fetchMemberRequirement, sendOrgEmail } from '../_shared/utils.ts';
 import corsHeaders from '../_shared/cors.ts';
 import { footer } from '../_shared/strings.ts';
+import { createTypedClient } from '../_shared/supabaseClient.ts';
+import { fetchMemberRequirement, sendOrgEmail } from '../_shared/utils.ts';
 
 // import { initOrgCalendar } from '../_shared/google/calendar.ts'; REMOVE FOR NOW: DOESN'T WORK IN PRODUCTION
 
 type BodyType = {
-    organization_id: number;
+	organization_id: number;
 };
 
-Deno.serve(async (req: Request) => {
-    if (req.method === 'OPTIONS') {
-        return new Response('ok', { headers: corsHeaders });
-    }
+Deno.serve(async (request: Request) => {
+	if (request.method === 'OPTIONS') {
+		return new Response('ok', { headers: corsHeaders });
+	}
 
-    const {
-        organization_id,
-    }: BodyType = await req.json();
+	const { organization_id }: BodyType = await request.json();
 
-    if (!organization_id) {
-        return new Response('Missing field', { status: 400 });
-    }
+	if (organization_id === 0) {
+		return new Response('Missing field', { status: 400 });
+	}
 
-    const authHeader = req.headers.get('Authorization')!;
-    const supabaseClient = createClient(
-        Deno.env.get('SUPABASE_URL') ?? '',
-        Deno.env.get('SUPABASE_ANON_KEY') ?? '',
-        { global: { headers: { Authorization: authHeader } } },
-    );
+	const authHeader = request.headers.get('Authorization')!;
+	const supabaseClient = createTypedClient(authHeader);
 
-    const jwt = authHeader.split(' ')[1];
-    const { data: userData } = await supabaseClient.auth.getUser(jwt);
-    const user = userData.user;
+	const jwt = authHeader.split(' ', 2)[1];
+	const { data: userData } = await supabaseClient.auth.getUser(jwt);
+	const { user } = userData;
 
-    const required_members = await fetchMemberRequirement();
+	const required_members = await fetchMemberRequirement();
 
-    /* Failed to fetch supabase user */
-    if (!user) {
-        return new Response('Failed to fetch user.', { status: 500 });
-    }
+	/* Failed to fetch supabase user */
+	if (user === null) {
+		return new Response('Failed to fetch user.', { status: 500 });
+	}
 
-    /* check if user is a verified user. Verified user = the userdata that the site uses */
-    const { data: verifiedUsers, error: verifiedUsersError } =
-        await supabaseClient.from('users')
-            .select('*')
-            .eq('email', user.email);
+	/* Check if user is a verified user. Verified user = the userdata that the site uses */
+	const { data: verifiedUsers, error: verifiedUsersError } =
+		await supabaseClient.from('users').select('*').eq('email', user.email!);
 
-    if (verifiedUsersError) {
-        return new Response('Failed to fetch users associated email.', {
-            status: 500,
-        });
-    }
+	if (verifiedUsersError !== null) {
+		return new Response('Failed to fetch users associated email.', {
+			status: 500,
+		});
+	}
 
-    if (!verifiedUsers || !verifiedUsers.length) {
-        return new Response('User is unauthorized.', { status: 401 });
-    }
+	if (verifiedUsers === null || verifiedUsers.length === 0) {
+		return new Response('User is unauthorized.', { status: 401 });
+	}
 
-    type orgTyp = {
-        name: string;
-    };
+	type OrgTyp = {
+		name: string;
+	};
 
-    const { count: org_members } = await supabaseClient.from('memberships')
-        .select(`user_id`, { count: 'exact', head: true })
-        .eq('organization_id', organization_id)
-        .eq('active', true)
-        .returns<styp[]>();
+	const { count: org_members } = await supabaseClient
+		.from('memberships')
+		.select('user_id', { count: 'exact' })
+		.eq('organization_id', organization_id)
+		.eq('active', true);
 
-    const { data: orgData, error: approveError } = await supabaseClient.from(
-        'organizations',
-    )
-        .update({
-            state: org_members >= required_members ? 'UNLOCKED' : 'LOCKED',
-        })
-        .eq('id', organization_id)
-        .select(`
+	const { data: orgData, error: approveError } = await supabaseClient
+		.from('organizations')
+		.update({
+			state: (org_members ?? 0) >= required_members ? 'UNLOCKED' : 'LOCKED',
+		})
+		.eq('id', organization_id)
+		.select(
+			`
             name
-        `)
-        .returns<orgTyp[]>();
+        `
+		)
+		.overrideTypes<OrgTyp[], { merge: false }>();
 
-    if (approveError) {
-        return new Response('Failed to approve organization.', { status: 500 });
-    }
+	if (approveError !== null) {
+		return new Response('Failed to approve organization.', { status: 500 });
+	}
 
-    const approvedOrgName = orgData[0].name;
+	const approvedOrgName = orgData[0].name;
 
-    /* send emails  */
-    const emailBody =
-        `Congratulations! ${approvedOrgName} has been approved. You are now an official Stuyvesant club!
+	/* Send emails  */
+	const emailBody =
+		`Congratulations! ${approvedOrgName} has been approved. You are now an official Stuyvesant club!
 
 ${
-            org_members < required_members
-                ? `Once your club is unlocked at ${required_members} members, y`
-                : 'Y'
-        }ou can start advertising your club, recruiting members, and holding meetings. We hope you enjoy your club experience at Stuy.` +
-        footer;
+	(org_members ?? 0) < (required_members ?? 0)
+		? `Once your club is unlocked at ${required_members} members, y`
+		: 'Y'
+}ou can start advertising your club, recruiting members, and holding meetings. We hope you enjoy your club experience at Stuy.` +
+		footer;
 
-    const subject = `${approvedOrgName}: Charter Approved | Epsilon`;
+	const subject = `${approvedOrgName}: Charter Approved | Epsilon`;
 
-    sendOrgEmail(organization_id, subject, emailBody, false, true);
+	void sendOrgEmail(organization_id, subject, emailBody, true, true);
 
-    /* asynchronously create a google calendar
+	/* Asynchronously create a google calendar
     REMOVE FOR NOW: DOESN'T WORK IN PRODUCTION
     initOrgCalendar(organization_id)
     .catch((error : unknown) => {
@@ -111,12 +104,12 @@ ${
     });
     */
 
-    return new Response(
-        JSON.stringify({
-            success: true,
-        }),
-        {
-            headers: { 'Content-Type': 'application/json' },
-        },
-    );
+	return Response.json(
+		{
+			success: true,
+		},
+		{
+			headers: { 'Content-Type': 'application/json' },
+		}
+	);
 });

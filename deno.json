@@ -1,10 +1,15 @@
 {
-    "fmt": {
-        "useTabs": false,
-        "lineWidth": 80,
-        "indentWidth": 4,
-        "semiColons": true,
-        "singleQuote": true,
-        "proseWrap": "preserve"
-    }
+	"fmt": {
+		"useTabs": false,
+		"lineWidth": 80,
+		"indentWidth": 4,
+		"semiColons": true,
+		"singleQuote": true,
+		"proseWrap": "preserve"
+	},
+	"lint": {
+		"rules": {
+			"exclude": ["no-import-prefix"]
+		}
+	}
 }

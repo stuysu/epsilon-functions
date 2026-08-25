@@ -1,75 +1,74 @@
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import corsHeaders from '../_shared/cors.ts';
+import { createTypedClient } from '../_shared/supabaseClient.ts';
 
 type BodyType = {
-    first_name: string;
-    last_name: string;
-    email: string;
-    grad_year: number | null;
-    is_faculty: boolean;
+	first_name: string;
+	last_name: string;
+	email: string;
+	grad_year: number | undefined;
+	is_faculty: boolean;
 };
 
-Deno.serve(async (req: Request) => {
-    if (req.method === 'OPTIONS') {
-        return new Response('ok', { headers: corsHeaders });
-    }
+Deno.serve(async (request: Request) => {
+	if (request.method === 'OPTIONS') {
+		return new Response('ok', { headers: corsHeaders });
+	}
 
-    const authHeader = req.headers.get('Authorization')!;
-    const supabaseClient = createClient(
-        Deno.env.get('SUPABASE_URL') ?? '',
-        Deno.env.get('SUPABASE_ANON_KEY') ?? '',
-        { global: { headers: { Authorization: authHeader } } },
-    );
+	const authHeader = request.headers.get('Authorization')!;
+	const supabaseClient = createTypedClient(authHeader);
 
-    const bodyJson = await req.json();
-    const body: BodyType = {
-        first_name: bodyJson.first_name,
-        last_name: bodyJson.last_name,
-        email: bodyJson.email,
-        grad_year: bodyJson.grad_year,
-        is_faculty: bodyJson.is_faculty,
-    };
+	const bodyJson = (await request.json()) as BodyType;
+	const body: BodyType = {
+		first_name: bodyJson.first_name,
+		last_name: bodyJson.last_name,
+		email: bodyJson.email,
+		grad_year: bodyJson.grad_year ?? undefined,
+		is_faculty: bodyJson.is_faculty,
+	};
 
-    /** check if user already exists **/
+	/** Check if user already exists */
 
-    const { data: userData, error: userError } = await supabaseClient.from(
-        'users',
-    )
-        .select()
-        .eq('email', body.email);
+	const { data: userData, error: userError } = await supabaseClient
+		.from('users')
+		.select()
+		.eq('email', body.email);
 
-    if (userData && userData.length > 0) {
-        return new Response(JSON.stringify({ error: 'User already exists' }), {
-            status: 400,
-            headers: corsHeaders,
-        });
-    } else {
-        const { error: createUserError } = await supabaseClient.from('users')
-            .insert(body)
-            .select();
+	if (userData && userData.length > 0) {
+		return Response.json(
+			{ error: 'User already exists' },
+			{
+				status: 400,
+				headers: corsHeaders,
+			}
+		);
+	}
 
-        if (createUserError) {
-            return new Response(
-                JSON.stringify({
-                    error: 'Error creating user',
-                    details: {
-                        message: createUserError?.message,
-                        hint: createUserError?.hint,
-                        code: createUserError?.code,
-                        details: createUserError?.details,
-                    },
-                }),
-                { status: 500, headers: corsHeaders },
-            );
-        }
-    }
+	const { error: userCreateError } = await supabaseClient
+		.from('users')
+		.insert(body)
+		.select();
 
-    return new Response(
-        JSON.stringify({
-            success: true,
-        }),
-        {
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        },
-    );
+	if (userCreateError !== null) {
+		return Response.json(
+			{
+				error: 'Error creating user',
+				details: {
+					message: userCreateError?.message,
+					hint: userCreateError?.hint,
+					code: userCreateError?.code,
+					details: userCreateError?.details,
+				},
+			},
+			{ status: 500, headers: corsHeaders }
+		);
+	}
+
+	return Response.json(
+		{
+			success: true,
+		},
+		{
+			headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+		}
+	);
 });

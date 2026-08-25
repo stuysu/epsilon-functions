@@ -3,8 +3,9 @@ run this with settings
 GOOGLE_CLIENT_ID=<> GOOGLE_CLIENT_SECRET=<> SUPABASE_URL=http://localhost:8000 SUPABASE_SERVICE_ROLE_KEY=<> API_EXTERNAL_URL=<> deno run --allow-net --allow-env --allow-read --unstable authenticate.ts
 */
 
-import { Application, Context, Router } from 'https://deno.land/x/oak/mod.ts';
+import type { Context } from 'https://deno.land/x/oak/mod.ts';
 import { config } from 'https://deno.land/x/dotenv/mod.ts';
+import { Application, Router } from 'https://deno.land/x/oak/mod.ts';
 import { OAuth2Client } from 'npm:google-auth-library';
 import supabaseAdmin from '../supabaseAdmin.ts';
 
@@ -19,9 +20,9 @@ const domain = urlElements[0] + ':' + urlElements[1];
 const REDIRECT_URI = `${domain}:${PORT}`;
 
 const oauth2Client = new OAuth2Client(
-    GOOGLE_CLIENT_ID,
-    GOOGLE_CLIENT_SECRET,
-    REDIRECT_URI,
+	GOOGLE_CLIENT_ID,
+	GOOGLE_CLIENT_SECRET,
+	REDIRECT_URI
 );
 
 const SCOPES = ['https://www.googleapis.com/auth/calendar'];
@@ -30,48 +31,47 @@ const app = new Application();
 const router = new Router();
 
 const authUrl = oauth2Client.generateAuthUrl({
-    access_type: 'offline',
-    scope: SCOPES,
+	access_type: 'offline',
+	scope: SCOPES,
 });
 
 console.log('Viist this URL:', authUrl);
 
 router.get('/', async (context: Context) => {
-    const queryParams = context.request.url.searchParams;
-    const code = queryParams.get('code');
+	const queryParameters = context.request.url.searchParams;
+	const code = queryParameters.get('code');
 
-    if (!code) {
-        context.response.status = 400;
-        context.response.body = 'No code provided';
-        return;
-    }
+	if (!code) {
+		context.response.status = 400;
+		context.response.body = 'No code provided';
+		return;
+	}
 
-    try {
-        const { tokens } = await oauth2Client.getToken(code);
+	try {
+		const { tokens } = await oauth2Client.getToken(code);
 
-        if (!tokens) {
-            context.response.status = 400;
-            context.response.body = 'No tokens obtained';
-            return;
-        }
+		if (!tokens) {
+			context.response.status = 400;
+			context.response.body = 'No tokens obtained';
+			return;
+		}
 
-        const { error } = await supabaseAdmin.from('backgroundtokens')
-            .update({ tokens: JSON.stringify(tokens) })
-            .eq('service', 'google');
+		const { error } = await supabaseAdmin
+			.from('backgroundtokens')
+			.update({ tokens: JSON.stringify(tokens) })
+			.eq('service', 'google');
 
-        if (error) {
-            console.error(error);
-        }
+		if (error) {
+			console.error(error);
+		}
 
-        console.log('Tokens updated!');
+		console.log('Tokens updated!');
 
-        context.response.body =
-            'Refresh token obtained. Check the server logs.';
-    } catch (error) {
-        context.response.status = 500;
-        context.response.body =
-            `Error obtaining refresh token: ${error.message}`;
-    }
+		context.response.body = 'Refresh token obtained. Check the server logs.';
+	} catch (error) {
+		context.response.status = 500;
+		context.response.body = `Error obtaining refresh token: ${error.message}`;
+	}
 });
 
 app.use(router.routes());

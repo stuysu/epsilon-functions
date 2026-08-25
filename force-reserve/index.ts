@@ -1,163 +1,175 @@
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import { sendOrgEmail } from '../_shared/utils.ts';
+import { datetime } from 'ptera';
 import corsHeaders from '../_shared/cors.ts';
-import { datetime } from 'https://deno.land/x/ptera/mod.ts';
 import { footer } from '../_shared/strings.ts';
+import { createTypedClient } from '../_shared/supabaseClient.ts';
+import { sendOrgEmail } from '../_shared/utils.ts';
 
 type BodyType = {
-    room_id: number;
-    organization_id: number;
-    start_time: string;
-    end_time: string;
+	room_id: number;
+	organization_id: number;
+	start_time: string;
+	end_time: string;
 };
 
-Deno.serve(async (req: Request) => {
-    if (req.method === 'OPTIONS') {
-        return new Response('ok', { headers: corsHeaders });
-    }
+Deno.serve(async (request: Request) => {
+	if (request.method === 'OPTIONS') {
+		return new Response('ok', { headers: corsHeaders });
+	}
 
-    const {
-        room_id,
-        organization_id,
-        start_time,
-        end_time,
-    }: BodyType = await req.json();
+	const { room_id, organization_id, start_time, end_time }: BodyType =
+		await request.json();
 
-    if (!room_id || !organization_id || !start_time || !end_time) {
-        return new Response('Missing field', { status: 400 });
-    }
+	if (
+		room_id === 0 ||
+		organization_id === 0 ||
+		start_time === '' ||
+		end_time === ''
+	) {
+		return new Response('Missing field', { status: 400 });
+	}
 
-    const authHeader = req.headers.get('Authorization')!;
-    const supabaseClient = createClient(
-        Deno.env.get('SUPABASE_URL') ?? '',
-        Deno.env.get('SUPABASE_ANON_KEY') ?? '',
-        { global: { headers: { Authorization: authHeader } } },
-    );
+	const authHeader = request.headers.get('Authorization')!;
+	const supabaseClient = createTypedClient(authHeader);
 
-    const jwt = authHeader.split(' ')[1];
-    const { data: userData } = await supabaseClient.auth.getUser(jwt);
-    const user = userData.user;
+	const jwt = authHeader.split(' ', 2)[1];
+	const { data: userData } = await supabaseClient.auth.getUser(jwt);
+	const { user } = userData;
 
-    /* Failed to fetch supabase user */
-    if (!user) {
-        return new Response('Failed to fetch user.', { status: 500 });
-    }
+	/* Failed to fetch supabase user */
+	if (user === null) {
+		return new Response('Failed to fetch user.', { status: 500 });
+	}
 
-    /* check if user is a verified user. Verified user = the userdata that the site uses */
-    const { data: verifiedUsers, error: verifiedUsersError } =
-        await supabaseClient.from('users')
-            .select('*')
-            .eq('email', user.email);
+	/* Check if user is a verified user. Verified user = the userdata that the site uses */
+	const { data: verifiedUsers, error: verifiedUsersError } =
+		await supabaseClient.from('users').select('*').eq('email', user.email!);
 
-    if (verifiedUsersError) {
-        return new Response('Failed to fetch users associated email.', {
-            status: 500,
-        });
-    }
+	if (verifiedUsersError !== null) {
+		return new Response('Failed to fetch users associated email.', {
+			status: 500,
+		});
+	}
 
-    if (!verifiedUsers || !verifiedUsers.length) {
-        return new Response('User is unauthorized.', { status: 401 });
-    }
+	if (verifiedUsers?.length === 0) {
+		return new Response('User is unauthorized.', { status: 401 });
+	}
 
-    /* validation via RLS */
+	/* Validation via RLS */
 
-    /*
+	/*
     check if there is any interference with time and room.
     if there are any other meetings, kick them out and bcc it@stuysu.org.
     */
 
-    const { data: meetings, error: meetingFetchError } = await supabaseClient
-        .rpc('get_booked_rooms', {
-            meeting_start: start_time,
-            meeting_end: end_time,
-        })
-        .returns<{ room_id: number; meeting_id: number }[]>();
+	const { data: meetings, error: meetingFetchError } = await supabaseClient
+		.rpc('get_booked_rooms', {
+			meeting_start: start_time,
+			meeting_end: end_time,
+		})
+		.overrideTypes<
+			Array<{ room_id: number; meeting_id: number }>,
+			{ merge: false }
+		>();
 
-    if (meetingFetchError || !meetings) {
-        return new Response('Failed to fetch meetings', { status: 500 });
-    }
+	if (meetingFetchError !== null || meetings === null) {
+		return new Response('Failed to fetch meetings', { status: 500 });
+	}
 
-    // check if room is AIS-locked on the booking day
-    const { data: roomData, error: roomFetchError } = await supabaseClient
-        .from('rooms')
-        .select('ais_days')
-        .eq('id', room_id)
-        .single();
+	// Check if room is AIS-locked on the booking day
+	const { data: roomData, error: roomFetchError } = await supabaseClient
+		.from('rooms')
+		.select('ais_days')
+		.eq('id', room_id)
+		.single();
 
-    if (roomFetchError || !roomData) {
-        return new Response('Failed to fetch room.', { status: 500 });
-    }
+	if (roomFetchError !== null || roomData === null) {
+		return new Response('Failed to fetch room.', { status: 500 });
+	}
 
-    const daysOfWeek = ['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY'];
-    const bookingDay = daysOfWeek[new Date(start_time).getDay()];
+	const daysOfWeek = [
+		'SUNDAY',
+		'MONDAY',
+		'TUESDAY',
+		'WEDNESDAY',
+		'THURSDAY',
+		'FRIDAY',
+		'SATURDAY',
+	];
+	const bookingDay = daysOfWeek[new Date(start_time).getDay()];
 
-    if (roomData.ais_days && roomData.ais_days.includes(bookingDay)) {
-        return new Response('This room is reserved for AIS on this day and cannot be booked.', { status: 400 });
-    }
+	if (roomData.ais_days?.includes(bookingDay)) {
+		return new Response(
+			'This room is reserved for AIS on this day and cannot be booked.',
+			{
+				status: 400,
+			}
+		);
+	}
 
-    const conflictingMeeting = meetings.find((meeting) =>
-        meeting.room_id === room_id
-    );
+	const conflictingMeeting = meetings.find(
+		(meeting) => meeting.room_id === room_id
+	);
 
-    if (conflictingMeeting) {
-        const { data: orgData, error: orgError } = await supabaseClient.from(
-            'meetings',
-        )
-            .delete()
-            .eq('id', conflictingMeeting.meeting_id)
-            .select(`
+	if (conflictingMeeting) {
+		const { data: orgData, error: orgError } = await supabaseClient
+			.from('meetings')
+			.delete()
+			.eq('id', conflictingMeeting.meeting_id)
+			.select(
+				`
                 title,
                 organizations!inner (
                     name,
                     id
                 )    
-            `)
-            .returns<
-                { title: string; organizations: { name: string; id: number } }[]
-            >();
+            `
+			)
+			.overrideTypes<
+				Array<{ title: string; organizations: { name: string; id: number } }>,
+				{ merge: false }
+			>();
 
-        if (orgError || !orgData) {
-            console.error('Failed to fetch org.');
-            return new Response('Failed to notify conflicting rooms.', {
-                status: 500,
-            });
-        }
+		if (orgError !== null || orgData === null) {
+			console.error('Failed to fetch org.');
+			return new Response('Failed to notify conflicting rooms.', {
+				status: 500,
+			});
+		}
 
-        const orgId = orgData[0].organizations.id;
+		const orgId = orgData[0].organizations.id;
 
-        const emailBody =
-            `Your meeting, ${
-                orgData[0].title
-            }, has been cancelled by admininstrators due to a conflict with another meeting.
+		const emailBody =
+			`Your meeting, ${
+				orgData[0].title
+			}, has been cancelled by admininstrators due to a conflict with another meeting.
 
 We sincerely apologize for the inconvenience, and we hope you are able to schedule the meeting in a different room.` +
-            footer;
+			footer;
 
-        const emailSubject = `{ORG_NAME}: Meeting Removed | Epsilon`;
+		const emailSubject = '{ORG_NAME}: Meeting Removed | Epsilon';
 
-        sendOrgEmail(orgId, emailSubject, emailBody, false, true);
-    }
+		void sendOrgEmail(orgId, emailSubject, emailBody, false, true);
+	}
 
-    const { error: reserveError } = await supabaseClient.from('meetings')
-        .insert({
-            room_id,
-            organization_id,
-            start_time: datetime(start_time).toISO(),
-            end_time: datetime(end_time).toISO(),
-            title: 'Reserved Meeting',
-            description: 'This meeting was reserved by an admin.',
-        });
+	const { error: reserveError } = await supabaseClient.from('meetings').insert({
+		room_id,
+		organization_id,
+		start_time: datetime(start_time).toISO(),
+		end_time: datetime(end_time).toISO(),
+		title: 'Reserved Meeting',
+		description: 'This meeting was reserved by an admin.',
+	});
 
-    if (reserveError) {
-        return new Response('Failed to reserve room.', { status: 500 });
-    }
+	if (reserveError) {
+		return new Response('Failed to reserve room.', { status: 500 });
+	}
 
-    return new Response(
-        JSON.stringify({
-            success: true,
-        }),
-        {
-            headers: { 'Content-Type': 'application/json' },
-        },
-    );
+	return Response.json(
+		{
+			success: true,
+		},
+		{
+			headers: { 'Content-Type': 'application/json' },
+		}
+	);
 });
