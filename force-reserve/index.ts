@@ -1,4 +1,4 @@
-import { datetime } from 'ptera';
+import { nyISO } from '../_shared/utils.ts';
 import corsHeaders from '../_shared/cors.ts';
 import { footer } from '../_shared/strings.ts';
 import { createTypedClient } from '../_shared/supabaseClient.ts';
@@ -154,8 +154,8 @@ We sincerely apologize for the inconvenience, and we hope you are able to schedu
 	const { error: reserveError } = await supabaseClient.from('meetings').insert({
 		room_id,
 		organization_id,
-		start_time: datetime(start_time).toISO(),
-		end_time: datetime(end_time).toISO(),
+		start_time: new Date(start_time).toISOString(),
+		end_time: new Date(end_time).toISOString(),
 		title: 'Reserved Meeting',
 		description: 'This meeting was reserved by an admin.',
 	});

@@ -358,3 +358,29 @@ export const safeSupabaseQuery = async <T>(
 
 	return data;
 };
+
+export const nyISO = (dateInput?: Date | string | number): string => {
+	const currentDate =
+		dateInput !== undefined && dateInput !== null
+			? new Date(dateInput)
+			: new Date();
+	const nyDateFormatter = new Intl.DateTimeFormat('en-US', {
+		timeZone: 'America/New_York',
+		year: 'numeric',
+		month: '2-digit',
+		day: '2-digit',
+		hour: '2-digit',
+		minute: '2-digit',
+		second: '2-digit',
+		hourCycle: 'h23',
+	});
+	const dateFormatterParts = nyDateFormatter.formatToParts(currentDate);
+	const getDateFormatterValue = (formatterPartType: string): string => {
+		const formatterPartValue = dateFormatterParts.find(
+			(dateFormatterPart) => dateFormatterPart.type === formatterPartType
+		);
+		return formatterPartValue ? formatterPartValue.value : '';
+	};
+
+	return `${getDateFormatterValue('year')}-${getDateFormatterValue('month')}-${getDateFormatterValue('day')}T${getDateFormatterValue('hour')}:${getDateFormatterValue('minute')}:${getDateFormatterValue('second')}`;
+};

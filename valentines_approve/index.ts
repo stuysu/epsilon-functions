@@ -1,4 +1,4 @@
-import { datetime } from 'ptera';
+import { nyISO } from '../_shared/utils.ts';
 import corsHeaders from '../_shared/cors.ts';
 import { createTypedClient } from '../_shared/supabaseClient.ts';
 
@@ -69,7 +69,7 @@ Deno.serve(async (request: Request) => {
 		return new Response('Letter already approved!', { status: 400 });
 	}
 
-	const currentTime = datetime().toZonedTime('America/New_York').toISO();
+	const currentTime = nyISO();
 
 	const { error: messageUpdateError } = await supabaseClient
 		.from('valentinesmessages')

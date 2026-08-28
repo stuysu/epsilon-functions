@@ -1,4 +1,4 @@
-import { datetime } from 'ptera';
+import { nyISO } from '../_shared/utils.ts';
 import corsHeaders from '../_shared/cors.ts';
 import transport from '../_shared/emailTransport.ts';
 import { footer } from '../_shared/strings.ts';
@@ -166,9 +166,8 @@ This email is to let you know that the following meetings have been removed from
 ${value.removedMeetings
 	.map(
 		(meeting) =>
-			`${meeting.title} at ${datetime(meeting.start_time)
-				.toZonedTime('America/New_York')
-				.format('MMMM d, YYYY, h:mm a')}`
+			`${meeting.title} at ${nyISO(meeting.start_time)
+				}`
 	)
 	.join('\n')}
 

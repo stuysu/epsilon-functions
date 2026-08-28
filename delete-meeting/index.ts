@@ -1,4 +1,4 @@
-import { datetime } from 'ptera';
+import { nyISO } from '../_shared/utils.ts';
 import corsHeaders from '../_shared/cors.ts';
 import { footer } from '../_shared/strings.ts';
 import { createTypedClient } from '../_shared/supabaseClient.ts';
@@ -80,12 +80,10 @@ Deno.serve(async (request: Request) => {
 	/* Notify members */
 	/* email all members of organization */
 
-	const startTime = datetime(oldMeetingData[0].start_time)
-		.toZonedTime('America/New_York')
-		.format('MMMM d, YYYY, h:mm a');
-	const endTime = datetime(oldMeetingData[0].end_time)
-		.toZonedTime('America/New_York')
-		.format('MMMM d, YYYY, h:mm a');
+	const startTime = nyISO(oldMeetingData[0].start_time)
+		;
+	const endTime = nyISO(oldMeetingData[0].end_time)
+		;
 
 	const emailText =
 		// eslint-disable-next-line unicorn/no-incorrect-template-string-interpolation
