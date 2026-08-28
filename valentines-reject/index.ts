@@ -1,4 +1,3 @@
-import { nyISO } from '../_shared/utils.ts';
 import corsHeaders from '../_shared/cors.ts';
 import transport from '../_shared/emailTransport.ts';
 import { footer } from '../_shared/strings.ts';

@@ -1,8 +1,7 @@
-import { nyISO } from '../_shared/utils.ts';
 import corsHeaders from '../_shared/cors.ts';
 import { footer } from '../_shared/strings.ts';
 import { createTypedClient } from '../_shared/supabaseClient.ts';
-import { sendOrgEmail } from '../_shared/utils.ts';
+import { nyISO, sendOrgEmail } from '../_shared/utils.ts';
 
 type BodyType = {
 	id: number;
@@ -80,10 +79,8 @@ Deno.serve(async (request: Request) => {
 	/* Notify members */
 	/* email all members of organization */
 
-	const startTime = nyISO(oldMeetingData[0].start_time)
-		;
-	const endTime = nyISO(oldMeetingData[0].end_time)
-		;
+	const startTime = nyISO(oldMeetingData[0].start_time);
+	const endTime = nyISO(oldMeetingData[0].end_time);
 
 	const emailText =
 		// eslint-disable-next-line unicorn/no-incorrect-template-string-interpolation

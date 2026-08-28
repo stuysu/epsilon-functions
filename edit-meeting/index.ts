@@ -1,8 +1,11 @@
-import { nyISO } from '../_shared/utils.ts';
 import corsHeaders from '../_shared/cors.ts';
 import { footer } from '../_shared/strings.ts';
 import { createTypedClient } from '../_shared/supabaseClient.ts';
-import { getMeetingValidationError, sendOrgEmail } from '../_shared/utils.ts';
+import {
+	getMeetingValidationError,
+	nyISO,
+	sendOrgEmail,
+} from '../_shared/utils.ts';
 
 type BodyType = {
 	title: string;
@@ -124,10 +127,8 @@ Deno.serve(async (request: Request) => {
 
 	/* Asynchronously email all members of organization */
 
-	const startTime = nyISO(updateMeetingData[0].start_time)
-		;
-	const endTime = nyISO(updateMeetingData[0].end_time)
-		;
+	const startTime = nyISO(updateMeetingData[0].start_time);
+	const endTime = nyISO(updateMeetingData[0].end_time);
 
 	const emailText =
 		// eslint-disable-next-line unicorn/no-incorrect-template-string-interpolation

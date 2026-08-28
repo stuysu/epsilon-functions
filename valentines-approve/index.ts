@@ -1,6 +1,6 @@
-import { nyISO } from '../_shared/utils.ts';
 import corsHeaders from '../_shared/cors.ts';
 import { createTypedClient } from '../_shared/supabaseClient.ts';
+import { nyISO } from '../_shared/utils.ts';
 
 type BodyType = {
 	message_id: number;
@@ -69,7 +69,7 @@ Deno.serve(async (request: Request) => {
 		return new Response('Letter already approved!', { status: 400 });
 	}
 
-  const currentTime = nyISO();
+	const currentTime = nyISO();
 
 	const { error: messageUpdateError } = await supabaseClient
 		.from('valentinesmessages')

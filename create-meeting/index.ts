@@ -1,8 +1,11 @@
-import { nyISO } from '../_shared/utils.ts';
 import corsHeaders from '../_shared/cors.ts';
 import { footer } from '../_shared/strings.ts';
 import { createTypedClient } from '../_shared/supabaseClient.ts';
-import { getMeetingValidationError, sendOrgEmail } from '../_shared/utils.ts';
+import {
+	getMeetingValidationError,
+	nyISO,
+	sendOrgEmail,
+} from '../_shared/utils.ts';
 
 // import { createCalendarEvent } from '../_shared/google/calendar.ts'; doesn't work
 
@@ -86,7 +89,7 @@ Deno.serve(async (request: Request) => {
 		undefined,
 		body.organization_id
 	);
-	if (validationError !== null) {
+	if (validationError !== undefined && validationError !== '') {
 		return new Response(validationError, {
 			status: 400,
 		});
@@ -130,10 +133,8 @@ Deno.serve(async (request: Request) => {
 	}
 
 	/* Send out emails */
-	const startTime = nyISO(meetingData[0].start_time)
-		;
-	const endTime = nyISO(meetingData[0].end_time)
-		;
+	const startTime = nyISO(meetingData[0].start_time);
+	const endTime = nyISO(meetingData[0].end_time);
 
 	const ORG_NAME = '{ORG_NAME}';
 	const emailText =

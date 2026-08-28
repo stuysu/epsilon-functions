@@ -1,8 +1,8 @@
-import { nyISO } from '../_shared/utils.ts';
 import corsHeaders from '../_shared/cors.ts';
 import transport from '../_shared/emailTransport.ts';
 import { footer } from '../_shared/strings.ts';
 import { createTypedClient } from '../_shared/supabaseClient.ts';
+import { nyISO } from '../_shared/utils.ts';
 
 type BodyType = {
 	room_id: number;
@@ -216,11 +216,7 @@ Hi ${admin.users.first_name},
 
 This email is to let you know that the following meetings have been removed from ${value.name}:
 ${value.removedMeetings
-	.map(
-		(meeting) =>
-			`${meeting.title} at ${nyISO(meeting.start_time)
-				}`
-	)
+	.map((meeting) => `${meeting.title} at ${nyISO(meeting.start_time)}`)
 	.join('\n')}
 
 This is because the room(s) they were originally scheduled for have been taken out of service.
