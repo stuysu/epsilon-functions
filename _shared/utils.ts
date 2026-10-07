@@ -4,6 +4,7 @@ import Transport from './emailTransport.ts';
 const MIN_LENGTH = 30; // minutes
 
 type mtyp = {
+    id: number;
     role: 'CREATOR' | 'ADMIN' | 'ADVISOR' | 'MEMBER';
     allow_notifications: boolean;
     users: {
@@ -58,7 +59,7 @@ export const isValidMeeting = async (
             console.log(organizationFetchError);
             return ERR + ' (Code: BAD_ORG_FETCH)';
         }
-        if (organization.state !== 'ADMIN') {
+        if (organization?.state !== 'ADMIN') {
             const now = new Date();
             let { data: pendingMeetings, error: pendingMeetingFetchError } =
                 await supabaseAdmin
@@ -77,7 +78,7 @@ export const isValidMeeting = async (
             if (pendingMeetingFetchError) {
                 return ERR + ' (Code: BAD_PEND)';
             }
-            if (pendingMeetings.length >= 5) return ERR_MAX_ROOMS;
+            if ((pendingMeetings ?? []).length >= 5) return ERR_MAX_ROOMS;
         }
 
         let { data: meetings, error: meetingFetchError } = await supabaseAdmin
@@ -93,14 +94,15 @@ export const isValidMeeting = async (
         }
 
         // editing meeting, exclude the original meeting
+        let bookedRooms: roomMeta[] = Array.isArray(meetings) ? meetings : [];
         if (meeting_id) {
-            meetings = meetings.filter((meeting) =>
+            bookedRooms = bookedRooms.filter((meeting) =>
                 meeting.meeting_id !== meeting_id
             );
         }
 
         // room is booked at that time
-        if (meetings.find((meeting) => meeting.room_id === room_id)) {
+        if (bookedRooms.find((meeting) => meeting.room_id === room_id)) {
             return ERR_ROOM;
         }
 
@@ -159,13 +161,22 @@ export const sendOrgEmail = async (
             )
         `,
             )
-            .eq('organization_id', orgId);
+            .eq('organization_id', orgId)
+            .eq('active', true);
 
     if (membershipsError || !membershipsData || !membershipsData.length) {
-        console.log(`[sendOrgEmail] org=${orgId} no members or fetch error; err=${membershipsError ? membershipsError.message || membershipsError : 'none'}`);
+        console.log(
+            `[sendOrgEmail] org=${orgId} no members or fetch error; err=${
+                membershipsError
+                    ? membershipsError.message || membershipsError
+                    : 'none'
+            }`,
+        );
         return;
     }
-    console.log(`[sendOrgEmail] org=${orgId} memberships=${membershipsData.length}`);
+    console.log(
+        `[sendOrgEmail] org=${orgId} memberships=${membershipsData.length}`,
+    );
 
     const memberIds = membershipsData.map((membership) => membership.id);
 
@@ -176,22 +187,29 @@ export const sendOrgEmail = async (
             .in('membership_id', memberIds);
 
     if (notificationsError) {
-        console.log('[sendOrgEmail] Error fetching notifications.', notificationsError);
+        console.log(
+            '[sendOrgEmail] Error fetching notifications.',
+            notificationsError,
+        );
     }
     const notifications = notificationsData ?? [];
-    console.log(`[sendOrgEmail] org=${orgId} notification_rows=${notifications.length}`);
+    console.log(
+        `[sendOrgEmail] org=${orgId} notification_rows=${notifications.length}`,
+    );
 
-    const memberData = membershipsData.map((membership) => {
-        const notification = notifications.find(
-            (n) => n.membership_id === membership.id,
-        );
-        return {
-            ...membership,
-            allow_notifications: notification
-                ? notification.allow_notifications
-                : true,
-        };
-    });
+    const memberData = (membershipsData as unknown as mtyp[]).map(
+        (membership) => {
+            const notification = notifications.find(
+                (n) => n.membership_id === membership.id,
+            );
+            return {
+                ...membership,
+                allow_notifications: notification
+                    ? notification.allow_notifications
+                    : true,
+            };
+        },
+    );
 
     const recipientEmails: string[] = [];
     const orgName = memberData[0].organizations.name;
@@ -200,7 +218,11 @@ export const sendOrgEmail = async (
         acc[m.role] = (acc[m.role] || 0) + 1;
         return acc;
     }, {});
-    console.log(`[sendOrgEmail] org=${orgId} role_stats=${JSON.stringify(roleStats)} onlyAdmin=${!!onlyAdmin} notifyFaculty=${!!notifyFaculty}`);
+    console.log(
+        `[sendOrgEmail] org=${orgId} role_stats=${
+            JSON.stringify(roleStats)
+        } onlyAdmin=${!!onlyAdmin} notifyFaculty=${!!notifyFaculty}`,
+    );
 
     for (const member of memberData) {
         // do not notify faculty
@@ -225,7 +247,9 @@ export const sendOrgEmail = async (
     subject = subject.replace(/{ORG_NAME}/g, orgName);
     text = text.replace(/{ORG_NAME}/g, orgName);
 
-    console.log(`[sendOrgEmail] org=${orgId} recipients_after_filters=${recipientEmails.length} onlyAdmin=${!!onlyAdmin} notifyFaculty=${!!notifyFaculty}`);
+    console.log(
+        `[sendOrgEmail] org=${orgId} recipients_after_filters=${recipientEmails.length} onlyAdmin=${!!onlyAdmin} notifyFaculty=${!!notifyFaculty}`,
+    );
 
     if (recipientEmails?.length > 0) {
         try {
@@ -237,7 +261,10 @@ export const sendOrgEmail = async (
             });
             console.log('[sendOrgEmail] sendMail OK');
         } catch (e) {
-            console.error('[sendOrgEmail] sendMail failed', (e as Error)?.message || e);
+            console.error(
+                '[sendOrgEmail] sendMail failed',
+                (e as Error)?.message || e,
+            );
         }
     } else {
         console.log('[sendOrgEmail] No recipients; skipping send.');
@@ -281,37 +308,55 @@ export const sendMemberEmail = async (
             .select('membership_id, allow_notifications')
             .in('membership_id', memberIds);
 
-    if (notificationsError || !notificationsData || !notificationsData.length) {
-        console.log('Error fetching notifications.');
-        return;
-    }
-
-    const memberData = membershipsData.map((membership) => {
-        const notification = notificationsData.find(
-            (n) => n.membership_id === membership.id,
+    if (notificationsError) {
+        console.log(
+            '[sendMemberEmail] Error fetching notifications.',
+            notificationsError,
         );
-        return {
-            ...membership,
-            allow_notifications: notification
-                ? notification.allow_notifications
-                : true,
-        };
-    });
+    }
+    const notifications = notificationsData ?? [];
+    console.log(
+        `[sendMemberEmail] membership=${memberId} notification_rows=${notifications.length}`,
+    );
 
-    if (!memberData.allow_notifications) return;
+    const memberData = (membershipsData as unknown as mtyp[]).map(
+        (membership) => {
+            const notification = notifications.find(
+                (n) => n.membership_id === membership.id,
+            );
+            return {
+                ...membership,
+                allow_notifications: notification
+                    ? notification.allow_notifications
+                    : true,
+            };
+        },
+    );
 
-    subject = subject.replace(/{ORG_NAME}/g, memberData.organizations.name);
-    text = text.replace(/{ORG_NAME}/g, memberData.organizations.name);
+    const member = memberData[0];
 
-    subject = subject.replace(/{FIRST_NAME}/g, memberData.users.first_name);
-    text = text.replace(/{FIRST_NAME}/g, memberData.users.first_name);
+    if (!member.allow_notifications) return;
 
-    await Transport.sendMail({
-        from: Deno.env.get('NODEMAILER_FROM')!,
-        to: memberData.users.email,
-        subject,
-        text,
-    });
+    subject = subject.replace(/{ORG_NAME}/g, member.organizations.name);
+    text = text.replace(/{ORG_NAME}/g, member.organizations.name);
+
+    subject = subject.replace(/{FIRST_NAME}/g, member.users.first_name);
+    text = text.replace(/{FIRST_NAME}/g, member.users.first_name);
+
+    try {
+        await Transport.sendMail({
+            from: Deno.env.get('NODEMAILER_FROM')!,
+            to: member.users.email,
+            subject,
+            text,
+        });
+        console.log(`[sendMemberEmail] sendMail OK membership=${memberId}`);
+    } catch (e) {
+        console.error(
+            '[sendMemberEmail] sendMail failed',
+            (e as Error)?.message || e,
+        );
+    }
 };
 
 export const fetchMemberRequirement = async () => {

@@ -96,7 +96,7 @@ For more information, please check your club admin panel's messages tab.` +
 
     const emailSubject = `${rejectedOrgName}: Update Rejected | Epsilon`;
 
-    sendOrgEmail(organization_id, emailSubject, emailBody, false, true);
+    await sendOrgEmail(organization_id, emailSubject, emailBody, false, true);
 
     return new Response(
         JSON.stringify({

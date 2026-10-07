@@ -88,11 +88,22 @@ Deno.serve(async (req: Request) => {
         return new Response('Failed to fetch room.', { status: 500 });
     }
 
-    const daysOfWeek = ['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY'];
+    const daysOfWeek = [
+        'SUNDAY',
+        'MONDAY',
+        'TUESDAY',
+        'WEDNESDAY',
+        'THURSDAY',
+        'FRIDAY',
+        'SATURDAY',
+    ];
     const bookingDay = daysOfWeek[new Date(start_time).getDay()];
 
     if (roomData.ais_days && roomData.ais_days.includes(bookingDay)) {
-        return new Response('This room is reserved for AIS on this day and cannot be booked.', { status: 400 });
+        return new Response(
+            'This room is reserved for AIS on this day and cannot be booked.',
+            { status: 400 },
+        );
     }
 
     const conflictingMeeting = meetings.find((meeting) =>
@@ -135,7 +146,7 @@ We sincerely apologize for the inconvenience, and we hope you are able to schedu
 
         const emailSubject = `{ORG_NAME}: Meeting Removed | Epsilon`;
 
-        sendOrgEmail(orgId, emailSubject, emailBody, false, true);
+        await sendOrgEmail(orgId, emailSubject, emailBody, false, true);
     }
 
     const { error: reserveError } = await supabaseClient.from('meetings')

@@ -102,7 +102,7 @@ Deno.serve(async (req: Request) => {
         footer;
     const emailSubject = `${updatedOrgName}: Charter Update Approved | Epsilon`;
 
-    sendOrgEmail(organization_id, emailSubject, emailBody, false, true);
+    await sendOrgEmail(organization_id, emailSubject, emailBody, false, true);
 
     if (deleteEditError) {
         return new Response(

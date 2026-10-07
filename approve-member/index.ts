@@ -131,7 +131,7 @@ You can begin creating meetings, making posts, and your organization will be dis
 We hope you enjoy your club experience at Stuy!` + footer;
             const subject = `Organization Unlocked: {ORG_NAME} | Epsilon`;
 
-            sendOrgEmail(orgId, subject, emailText, false, true);
+            await sendOrgEmail(orgId, subject, emailText, false, true);
 
             await supabaseAdmin.from('organizations')
                 .update({ state: 'UNLOCKED' })

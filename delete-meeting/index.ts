@@ -99,7 +99,7 @@ Advisor: ${oldMeetingData[0].advisor || 'None'}` + footer;
     const emailSubject = `{ORG_NAME} canceled a meeting | Epsilon`;
 
     const oldOrgId = oldMeetingData[0].organization_id;
-    sendOrgEmail(oldOrgId, emailSubject, emailText);
+    await sendOrgEmail(oldOrgId, emailSubject, emailText);
 
     return new Response(
         JSON.stringify({

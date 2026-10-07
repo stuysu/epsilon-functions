@@ -60,11 +60,11 @@ Deno.serve(async (req: Request) => {
         name: string;
     };
 
-    const { count: org_members } = await supabaseClient.from('memberships')
+    const { count } = await supabaseClient.from('memberships')
         .select(`user_id`, { count: 'exact', head: true })
         .eq('organization_id', organization_id)
-        .eq('active', true)
-        .returns<styp[]>();
+        .eq('active', true);
+    const org_members = count ?? 0;
 
     const { data: orgData, error: approveError } = await supabaseClient.from(
         'organizations',
@@ -97,7 +97,7 @@ ${
 
     const subject = `${approvedOrgName}: Charter Approved | Epsilon`;
 
-    sendOrgEmail(organization_id, subject, emailBody, false, true);
+    await sendOrgEmail(organization_id, subject, emailBody, false, true);
 
     /* asynchronously create a google calendar
     REMOVE FOR NOW: DOESN'T WORK IN PRODUCTION

@@ -82,7 +82,7 @@ Deno.serve(async (req: Request) => {
         end_time: bodyJson.end_time,
         is_public: bodyJson.is_public,
         notify_faculty: bodyJson.notify_faculty,
-        advisor: advisor
+        advisor: advisor,
     };
 
     /* time (+ room) validation */
@@ -123,7 +123,7 @@ Deno.serve(async (req: Request) => {
                 start_time: body.start_time,
                 end_time: body.end_time,
                 is_public: body.is_public,
-                advisor: body.advisor
+                advisor: body.advisor,
             })
             .select(returnSelect)
             .returns<rtyp[]>();
@@ -151,7 +151,7 @@ Advisor: ${createMeetingData[0].advisor || 'None'}` + footer;
 
     const emailSubject = `{ORG_NAME} scheduled a meeting | Epsilon`;
 
-    sendOrgEmail(
+    await sendOrgEmail(
         body.organization_id,
         emailSubject,
         emailText,

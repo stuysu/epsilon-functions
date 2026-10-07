@@ -82,7 +82,7 @@ Deno.serve(async (req: Request) => {
         start_time: bodyJson.start_time,
         end_time: bodyJson.end_time,
         is_public: bodyJson.is_public,
-        advisor: advisor
+        advisor: advisor,
     };
 
     /* removed backend validation because it already exists in RLS */
@@ -149,7 +149,11 @@ Advisor: ${updateMeetingData[0].advisor || 'None'}` + footer;
 
     const emailSubject = `{ORG_NAME} updated a meeting | Epsilon`;
 
-    sendOrgEmail(updateMeetingData[0].organization_id, emailSubject, emailText);
+    await sendOrgEmail(
+        updateMeetingData[0].organization_id,
+        emailSubject,
+        emailText,
+    );
 
     return new Response(
         JSON.stringify({
