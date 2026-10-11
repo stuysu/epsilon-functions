@@ -124,7 +124,7 @@ This email is to let you know that ${siteUser.first_name} ${siteUser.last_name} 
             orgData[0].name
         }. You can approve their request at ${Deno.env.get('SITE_URL')}/${
             orgData[0].url
-        }/admin/member-requests` + footer;
+        }/admin/join-requests` + footer;
     const emailSubject = `${orgData[0].name}: New Join Request | Epsilon`;
 
     console.log('[JOIN_ORG] calling sendOrgEmail');
