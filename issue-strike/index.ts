@@ -109,7 +109,7 @@ ${reason}
 
 You can view this strike at ${Deno.env.get('SITE_URL')}/${
             strikeData[0].organizations.url
-        }/admin/strikes
+        }/audit
 
 If you would like to dispute this strike, please contact clubpub@stuysu.org.
 ` + footer;
