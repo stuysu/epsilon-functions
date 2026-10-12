@@ -135,7 +135,10 @@ Deno.serve(async (req: Request) => {
 
             for (const meeting of meetings) {
                 const start = new Date(meeting.start_time);
-                const dayOfWeek = daysOfWeek[start.getDay()];
+                /* the day it falls on in New York, not wherever the server runs */
+                const dayOfWeek = daysOfWeek[
+                    datetime(start).toZonedTime('America/New_York').weekDay()
+                ];
 
                 if (!available_days.includes(dayOfWeek)) {
                     /* delete meeting */
