@@ -130,13 +130,22 @@ Deno.serve(async (req: Request) => {
             .in('id', conflictingMeetingIds)
             .select(`
                 title,
+                start_time,
+                rooms (
+                    name
+                ),
                 organizations!inner (
                     name,
                     id
-                )    
+                )
             `)
             .returns<
-                { title: string; organizations: { name: string; id: number } }[]
+                {
+                    title: string;
+                    start_time: string;
+                    rooms: { name: string } | null;
+                    organizations: { name: string; id: number };
+                }[]
             >();
 
         if (orgError || !removedMeetings) {
@@ -146,32 +155,39 @@ Deno.serve(async (req: Request) => {
             });
         }
 
+        const roomName = removedMeetings[0]?.rooms?.name || 'the room';
+
         /* tell them why, if the admin gave a title for the reservation */
         const cause = reason
-            ? `because the room was reserved for: ${reason}.`
-            : 'due to a conflict with another meeting.';
+            ? `because ${roomName} was reserved for "${reason}"`
+            : `due to a conflict with another meeting in ${roomName}`;
 
-        const titlesByOrg: { [organizationId: number]: string[] } = {};
+        const meetingsByOrg: {
+            [organizationId: number]: typeof removedMeetings;
+        } = {};
         for (const meeting of removedMeetings) {
-            (titlesByOrg[meeting.organizations.id] ??= []).push(meeting.title);
+            (meetingsByOrg[meeting.organizations.id] ??= []).push(meeting);
         }
 
-        for (const [orgId, titles] of Object.entries(titlesByOrg)) {
-            const subject = titles.length === 1
-                ? `Your meeting, ${titles[0]}, has`
-                : `Your meetings, ${titles.join(', ')}, have`;
+        for (const [orgId, orgMeetings] of Object.entries(meetingsByOrg)) {
+            const emailBody = `Dear {ORG_NAME} member,
 
-            const emailBody =
-                `${subject} been cancelled by administrators ${cause}
+This email is to let you know that the following meeting(s) of {ORG_NAME} have been cancelled by administrators ${cause}:
+${
+                orgMeetings.map((meeting) =>
+                    `${meeting.title} at ${
+                        datetime(meeting.start_time).toZonedTime(
+                            'America/New_York',
+                        ).format('MMMM d, YYYY, h:mm a')
+                    }`
+                ).join('\n')
+            }
 
-We sincerely apologize for the inconvenience, and we hope you are able to schedule the meeting in a different room.` +
-                footer;
-
-            const emailSubject = `{ORG_NAME}: Meeting Removed | Epsilon`;
+We sincerely apologize for the inconvenience.` + footer;
 
             await sendOrgEmail(
                 Number(orgId),
-                emailSubject,
+                `{ORG_NAME}: Meeting(s) Cancelled | Epsilon`,
                 emailBody,
                 false,
                 false,
