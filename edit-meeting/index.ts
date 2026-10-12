@@ -149,11 +149,13 @@ Advisor: ${updateMeetingData[0].advisor || 'None'}` + footer;
 
     const emailSubject = `{ORG_NAME} updated a meeting | Epsilon`;
 
-    await sendOrgEmail(
-        updateMeetingData[0].organization_id,
-        emailSubject,
-        emailText,
-    );
+    if (bodyJson.silent !== true) {
+        await sendOrgEmail(
+            updateMeetingData[0].organization_id,
+            emailSubject,
+            emailText,
+        );
+    }
 
     return new Response(
         JSON.stringify({
