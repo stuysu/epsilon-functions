@@ -155,12 +155,13 @@ Deno.serve(async (req: Request) => {
             });
         }
 
-        const roomName = removedMeetings[0]?.rooms?.name || 'the room';
+        const roomName = removedMeetings[0]?.rooms?.name;
+        const room = roomName ? `room ${roomName}` : 'the room';
 
         /* tell them why, if the admin gave a title for the reservation */
         const cause = reason
-            ? `because ${roomName} was reserved for "${reason}"`
-            : `due to a conflict with another meeting in ${roomName}`;
+            ? `because ${room} was reserved for "${reason}"`
+            : `due to a conflict with another meeting in ${room}`;
 
         const meetingsByOrg: {
             [organizationId: number]: typeof removedMeetings;
@@ -173,6 +174,7 @@ Deno.serve(async (req: Request) => {
             const emailBody = `Dear {ORG_NAME} member,
 
 This email is to let you know that the following meeting(s) of {ORG_NAME} have been cancelled by administrators ${cause}:
+
 ${
                 orgMeetings.map((meeting) =>
                     `${meeting.title} at ${
