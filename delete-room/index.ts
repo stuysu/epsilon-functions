@@ -127,7 +127,7 @@ Deno.serve(async (req: Request) => {
     for (
         const [organizationId, orgMeetings] of Object.entries(removedMeetings)
     ) {
-        const emailBody = `Hi,
+        const emailBody = `Dear {ORG_NAME} member,
 
 This email is to let you know that the following meetings of {ORG_NAME} have been cancelled by administrators:
 ${
