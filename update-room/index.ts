@@ -1,5 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import Transport from '../_shared/emailTransport.ts';
+import { sendOrgEmail } from '../_shared/utils.ts';
 import corsHeaders from '../_shared/cors.ts';
 import { datetime } from 'https://deno.land/x/ptera/mod.ts';
 import { footer } from '../_shared/strings.ts';
@@ -76,7 +76,8 @@ Deno.serve(async (req: Request) => {
     /* validation via RLS */
 
     /* update room */
-    const { error: roomUpdateError } = await supabaseClient.from('rooms')
+    const { data: updatedRooms, error: roomUpdateError } = await supabaseClient
+        .from('rooms')
         .update({
             name,
             floor,
@@ -85,13 +86,17 @@ Deno.serve(async (req: Request) => {
             available_days: available_days.join(', '),
             ais_days,
         })
-        .eq('id', room_id);
+        .eq('id', room_id)
+        .select('id');
 
     if (roomUpdateError) {
         return new Response('Failed to update room.', { status: 500 });
     }
 
-    /* delete any meetings that are no longer valid, and update organization about them */
+    if (!updatedRooms || !updatedRooms.length) {
+        return new Response('User is unauthorized.', { status: 403 });
+    }
+
     const daysOfWeek: BodyType['available_days'] = [
         'SUNDAY',
         'MONDAY',
@@ -101,140 +106,77 @@ Deno.serve(async (req: Request) => {
         'FRIDAY',
         'SATURDAY',
     ];
-    await supabaseClient.from('meetings')
+    const { data: meetings, error: meetingFetchError } = await supabaseClient
+        .from('meetings')
         .select(`
             id,
             title,
             start_time,
-            end_time,
-            rooms!inner (
-                id,
-                name
-            ),
-            organization_id  
+            organization_id
         `)
         .eq('room_id', room_id)
-        .then(async ({ data: meetings, error: meetingFetchError }) => {
-            if (meetingFetchError || !meetings) {
-                console.error('Failed to fetch meetings', meetingFetchError);
-                return;
-            }
+        .gte('start_time', new Date().toISOString());
 
-            const orgUpdateData: {
-                [id: number]: {
-                    name: string;
-                    admins: { users: { first_name: string; email: string } }[];
-                    removedMeetings: {
-                        id: number;
-                        title: string;
-                        start_time: string;
-                        end_time: string;
-                    }[];
-                };
-            } = {};
+    if (meetingFetchError || !meetings) {
+        console.error('Failed to fetch meetings', meetingFetchError);
+        return new Response('Failed to update meetings.', { status: 500 });
+    }
 
-            for (const meeting of meetings) {
-                const start = new Date(meeting.start_time);
-                /* the day it falls on in New York, not wherever the server runs */
-                const dayOfWeek = daysOfWeek[
-                    datetime(start).toZonedTime('America/New_York').weekDay()
-                ];
+    const cancelledMeetings: {
+        [organizationId: number]: { title: string; start_time: string }[];
+    } = {};
 
-                if (!available_days.includes(dayOfWeek)) {
-                    /* delete meeting */
-                    const { error: deleteMeetingError } = await supabaseClient
-                        .from('meetings')
-                        .delete()
-                        .eq('id', meeting.id);
+    for (const meeting of meetings) {
+        const dayOfWeek = daysOfWeek[
+            datetime(new Date(meeting.start_time)).toZonedTime(
+                'America/New_York',
+            ).weekDay()
+        ];
 
-                    type mtyp = {
-                        users: {
-                            first_name: string;
-                            email: string;
-                        };
-                    };
+        if (available_days.includes(dayOfWeek)) continue;
 
-                    if (deleteMeetingError) continue;
+        const { data: cancelled, error: cancelError } = await supabaseClient
+            .from('meetings')
+            .delete()
+            .eq('id', meeting.id)
+            .select('id');
 
-                    /* meeting is no longer valid, need to update admins of org */
-                    const { data: admins, error: adminFetchError } =
-                        await supabaseClient.from('memberships')
-                            .select(`
-                            users!inner (
-                                first_name,
-                                email
-                            )
-                        `)
-                            .eq('organization_id', meeting.organization_id)
-                            .returns<mtyp[]>();
+        if (cancelError || !cancelled || !cancelled.length) {
+            console.error('Failed to cancel meeting', cancelError);
+            continue;
+        }
 
-                    if (adminFetchError || !admins) {
-                        console.error(
-                            'Failed to fetch admins',
-                            adminFetchError,
-                        );
-                        continue;
-                    }
+        (cancelledMeetings[meeting.organization_id] ??= []).push(meeting);
+    }
 
-                    const { data: orgData, error: orgFetchError } =
-                        await supabaseClient.from('organizations')
-                            .select(`
-                                id,
-                                name    
-                            `)
-                            .eq('id', meeting.organization_id)
-                            .limit(1)
-                            .single();
+    for (
+        const [organizationId, orgMeetings] of Object.entries(cancelledMeetings)
+    ) {
+        const emailBody = `Dear {ORG_NAME} member,
 
-                    if (orgFetchError || !orgData) {
-                        console.error(
-                            'Failed to fetch org data',
-                            orgFetchError,
-                        );
-                        continue;
-                    }
-
-                    if (!orgUpdateData[orgData.id]) {
-                        orgUpdateData[orgData.id] = {
-                            name: orgData.name,
-                            admins,
-                            removedMeetings: [],
-                        };
-                    }
-
-                    orgUpdateData[orgData.id].removedMeetings.push(meeting);
-                }
-            }
-
-            for (const value of Object.values(orgUpdateData)) {
-                for (const admin of value.admins) {
-                    const emailBody = `
-Hi ${admin.users.first_name},
-
-This email is to let you know that the following meetings have been removed from ${value.name}:
+This email is to let you know that the following meeting(s) of {ORG_NAME} have been cancelled by administrators due to room ${name} no longer being available:
 ${
-                        value.removedMeetings.map((meeting) =>
-                            `${meeting.title} at ${
-                                datetime(meeting.start_time).toZonedTime(
-                                    'America/New_York',
-                                ).format('MMMM d, YYYY, h:mm a')
-                            }`
-                        ).join('\n')
-                    }
+            orgMeetings.map((meeting) =>
+                `${meeting.title} at ${
+                    datetime(meeting.start_time).toZonedTime(
+                        'America/New_York',
+                    ).format('MMMM d, YYYY, h:mm a')
+                }`
+            ).join('\n')
+        }
 
-This is because the room(s) they were originally scheduled for have been taken out of service.
+We sincerely apologize for the inconvenience.` +
+            footer;
 
-We are sincerely apologize for the inconvenience, and we hope you are able to reschedule the meetings in a different room.` +
-                        footer;
-                    Transport.sendMail({
-                        from: Deno.env.get('NODEMAILER_FROM')!,
-                        to: admin.users.email,
-                        subject: `Meetings removed for ${value.name} | Epsilon`,
-                        text: emailBody,
-                    });
-                }
-            }
-        });
+        await sendOrgEmail(
+            Number(organizationId),
+            `{ORG_NAME}: Meeting(s) Cancelled | Epsilon`,
+            emailBody,
+            false,
+            false,
+        );
+    }
+
     return new Response(
         JSON.stringify({
             success: true,
