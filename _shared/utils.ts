@@ -1,5 +1,6 @@
 import supabaseAdmin from './supabaseAdmin.ts';
 import Transport from './emailTransport.ts';
+import { datetime } from 'https://deno.land/x/ptera/mod.ts';
 
 const MIN_LENGTH = 30; // minutes
 
@@ -116,7 +117,10 @@ export const isValidMeeting = async (
             'FRIDAY',
             'SATURDAY',
         ];
-        const dayOfWeek = daysOfWeek[start.getDay()];
+        /* the day it falls on in New York, not wherever the server runs */
+        const dayOfWeek = daysOfWeek[
+            datetime(start).toZonedTime('America/New_York').weekDay()
+        ];
 
         const { data: roomData, error: roomFetchError } = await supabaseAdmin
             .from('rooms')

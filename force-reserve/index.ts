@@ -99,7 +99,10 @@ Deno.serve(async (req: Request) => {
         'FRIDAY',
         'SATURDAY',
     ];
-    const bookingDay = daysOfWeek[new Date(start_time).getDay()];
+    /* the day it falls on in New York, not wherever the server runs */
+    const bookingDay = daysOfWeek[
+        datetime(new Date(start_time)).toZonedTime('America/New_York').weekDay()
+    ];
 
     if (roomData.ais_days && roomData.ais_days.includes(bookingDay)) {
         return new Response(
