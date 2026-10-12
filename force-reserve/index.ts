@@ -9,6 +9,7 @@ type BodyType = {
     organization_id: number;
     start_time: string;
     end_time: string;
+    title?: string;
 };
 
 Deno.serve(async (req: Request) => {
@@ -21,6 +22,7 @@ Deno.serve(async (req: Request) => {
         organization_id,
         start_time,
         end_time,
+        title,
     }: BodyType = await req.json();
 
     if (!room_id || !organization_id || !start_time || !end_time) {
@@ -106,6 +108,10 @@ Deno.serve(async (req: Request) => {
         );
     }
 
+    /* the admin can name the meeting, otherwise it keeps the default (the column is VARCHAR(500)) */
+    const reason = typeof title === 'string' ? title.trim().slice(0, 500) : '';
+    const meetingTitle = reason || 'Reserved Meeting';
+
     const conflictingMeeting = meetings.find((meeting) =>
         meeting.room_id === room_id
     );
@@ -136,10 +142,15 @@ Deno.serve(async (req: Request) => {
 
         const orgId = orgData[0].organizations.id;
 
+        /* tell them why, if the admin gave a title for the reservation */
+        const cause = reason
+            ? `because the room was reserved for: ${reason}.`
+            : 'due to a conflict with another meeting.';
+
         const emailBody =
             `Your meeting, ${
                 orgData[0].title
-            }, has been cancelled by admininstrators due to a conflict with another meeting.
+            }, has been cancelled by administrators ${cause}
 
 We sincerely apologize for the inconvenience, and we hope you are able to schedule the meeting in a different room.` +
             footer;
@@ -155,7 +166,7 @@ We sincerely apologize for the inconvenience, and we hope you are able to schedu
             organization_id,
             start_time: datetime(start_time).toISO(),
             end_time: datetime(end_time).toISO(),
-            title: 'Reserved Meeting',
+            title: meetingTitle,
             description: 'This meeting was reserved by an admin.',
         });
 
