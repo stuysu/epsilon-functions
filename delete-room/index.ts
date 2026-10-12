@@ -130,6 +130,7 @@ Deno.serve(async (req: Request) => {
         const emailBody = `Dear {ORG_NAME} member,
 
 This email is to let you know that the following meeting(s) of {ORG_NAME} have been cancelled by administrators due to room ${room.name} no longer being available:
+
 ${
             orgMeetings.map((meeting) =>
                 `${meeting.title} at ${
