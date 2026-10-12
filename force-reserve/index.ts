@@ -108,6 +108,10 @@ Deno.serve(async (req: Request) => {
         );
     }
 
+    /* the admin can name the meeting, otherwise it keeps the default (the column is VARCHAR(500)) */
+    const reason = typeof title === 'string' ? title.trim().slice(0, 500) : '';
+    const meetingTitle = reason || 'Reserved Meeting';
+
     const conflictingMeeting = meetings.find((meeting) =>
         meeting.room_id === room_id
     );
@@ -138,10 +142,15 @@ Deno.serve(async (req: Request) => {
 
         const orgId = orgData[0].organizations.id;
 
+        /* tell them why, if the admin gave a title for the reservation */
+        const cause = reason
+            ? `because the room was reserved for: ${reason}.`
+            : 'due to a conflict with another meeting.';
+
         const emailBody =
             `Your meeting, ${
                 orgData[0].title
-            }, has been cancelled by admininstrators due to a conflict with another meeting.
+            }, has been cancelled by administrators ${cause}
 
 We sincerely apologize for the inconvenience, and we hope you are able to schedule the meeting in a different room.` +
             footer;
@@ -150,11 +159,6 @@ We sincerely apologize for the inconvenience, and we hope you are able to schedu
 
         await sendOrgEmail(orgId, emailSubject, emailBody, false, true);
     }
-
-    /* the admin can name the meeting, otherwise it keeps the default (the column is VARCHAR(500)) */
-    const meetingTitle = typeof title === 'string' && title.trim()
-        ? title.trim().slice(0, 500)
-        : 'Reserved Meeting';
 
     const { error: reserveError } = await supabaseClient.from('meetings')
         .insert({
