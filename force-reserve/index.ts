@@ -9,6 +9,7 @@ type BodyType = {
     organization_id: number;
     start_time: string;
     end_time: string;
+    title?: string;
 };
 
 Deno.serve(async (req: Request) => {
@@ -21,6 +22,7 @@ Deno.serve(async (req: Request) => {
         organization_id,
         start_time,
         end_time,
+        title,
     }: BodyType = await req.json();
 
     if (!room_id || !organization_id || !start_time || !end_time) {
@@ -149,13 +151,18 @@ We sincerely apologize for the inconvenience, and we hope you are able to schedu
         await sendOrgEmail(orgId, emailSubject, emailBody, false, true);
     }
 
+    /* the admin can name the meeting, otherwise it keeps the default (the column is VARCHAR(500)) */
+    const meetingTitle = typeof title === 'string' && title.trim()
+        ? title.trim().slice(0, 500)
+        : 'Reserved Meeting';
+
     const { error: reserveError } = await supabaseClient.from('meetings')
         .insert({
             room_id,
             organization_id,
             start_time: datetime(start_time).toISO(),
             end_time: datetime(end_time).toISO(),
-            title: 'Reserved Meeting',
+            title: meetingTitle,
             description: 'This meeting was reserved by an admin.',
         });
 
