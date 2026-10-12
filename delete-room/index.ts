@@ -145,7 +145,7 @@ We sincerely apologize for the inconvenience.` +
 
         await sendOrgEmail(
             Number(organizationId),
-            `{ORG_NAME}: Meetings Removed | Epsilon`,
+            `{ORG_NAME}: Meeting(s) Cancelled | Epsilon`,
             emailBody,
             false,
             false,
