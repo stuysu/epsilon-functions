@@ -115,16 +115,19 @@ Deno.serve(async (req: Request) => {
     const reason = typeof title === 'string' ? title.trim().slice(0, 500) : '';
     const meetingTitle = reason || 'Reserved Meeting';
 
-    const conflictingMeeting = meetings.find((meeting) =>
-        meeting.room_id === room_id
-    );
+    const bookedMeetings = meetings as unknown as {
+        room_id: number;
+        meeting_id: number;
+    }[];
+    const conflictingMeetingIds = bookedMeetings
+        .filter((meeting) => meeting.room_id === room_id)
+        .map((meeting) => meeting.meeting_id);
 
-    if (conflictingMeeting) {
-        const { data: orgData, error: orgError } = await supabaseClient.from(
-            'meetings',
-        )
+    if (conflictingMeetingIds.length) {
+        const { data: removedMeetings, error: orgError } = await supabaseClient
+            .from('meetings')
             .delete()
-            .eq('id', conflictingMeeting.meeting_id)
+            .in('id', conflictingMeetingIds)
             .select(`
                 title,
                 organizations!inner (
@@ -136,31 +139,44 @@ Deno.serve(async (req: Request) => {
                 { title: string; organizations: { name: string; id: number } }[]
             >();
 
-        if (orgError || !orgData) {
+        if (orgError || !removedMeetings) {
             console.error('Failed to fetch org.');
             return new Response('Failed to notify conflicting rooms.', {
                 status: 500,
             });
         }
 
-        const orgId = orgData[0].organizations.id;
-
         /* tell them why, if the admin gave a title for the reservation */
         const cause = reason
             ? `because the room was reserved for: ${reason}.`
             : 'due to a conflict with another meeting.';
 
-        const emailBody =
-            `Your meeting, ${
-                orgData[0].title
-            }, has been cancelled by administrators ${cause}
+        const titlesByOrg: { [organizationId: number]: string[] } = {};
+        for (const meeting of removedMeetings) {
+            (titlesByOrg[meeting.organizations.id] ??= []).push(meeting.title);
+        }
+
+        for (const [orgId, titles] of Object.entries(titlesByOrg)) {
+            const subject = titles.length === 1
+                ? `Your meeting, ${titles[0]}, has`
+                : `Your meetings, ${titles.join(', ')}, have`;
+
+            const emailBody =
+                `${subject} been cancelled by administrators ${cause}
 
 We sincerely apologize for the inconvenience, and we hope you are able to schedule the meeting in a different room.` +
-            footer;
+                footer;
 
-        const emailSubject = `{ORG_NAME}: Meeting Removed | Epsilon`;
+            const emailSubject = `{ORG_NAME}: Meeting Removed | Epsilon`;
 
-        await sendOrgEmail(orgId, emailSubject, emailBody, false, true);
+            await sendOrgEmail(
+                Number(orgId),
+                emailSubject,
+                emailBody,
+                false,
+                false,
+            );
+        }
     }
 
     const { error: reserveError } = await supabaseClient.from('meetings')
