@@ -2,6 +2,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { sendOrgEmail } from '../_shared/utils.ts';
 import corsHeaders from '../_shared/cors.ts';
 import { footer } from '../_shared/strings.ts';
+import { cleanCharter, validateCharter } from '../_shared/charter.ts';
 
 type BodyType = {
     organization_id: number;
@@ -58,6 +59,13 @@ Deno.serve(async (req: Request) => {
         return new Response('User is unauthorized.', { status: 401 });
     }
 
+    const cleanedFields = cleanCharter(updated_fields);
+
+    const problems = validateCharter(cleanedFields, false);
+    if (problems.length) {
+        return new Response(problems.join(' '), { status: 400 });
+    }
+
     type orgTyp = {
         name: string;
     };
@@ -66,7 +74,7 @@ Deno.serve(async (req: Request) => {
     const { data: orgData, error: updateError } = await supabaseClient.from(
         'organizations',
     )
-        .update(updated_fields)
+        .update(cleanedFields)
         .eq('id', organization_id)
         .select(`
             name

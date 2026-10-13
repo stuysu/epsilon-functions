@@ -1,6 +1,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import corsHeaders from '../_shared/cors.ts';
 import supabaseAdmin from '../_shared/supabaseAdmin.ts';
+import { cleanCharter, validateCharter } from '../_shared/charter.ts';
 
 type BodyType = {
     name: string;
@@ -8,6 +9,7 @@ type BodyType = {
     socials: string;
     mission: string;
     goals: string;
+    purpose: string;
     benefit: string;
     keywords: string;
     tags: string[];
@@ -98,20 +100,43 @@ Deno.serve(async (req: Request) => {
     }
 
     const siteUser = verifiedUsers[0];
-    const body: BodyType = await req.json();
+    const body: BodyType = cleanCharter(await req.json());
+
+    const problems = validateCharter(body, true);
+    if (problems.length) {
+        return new Response(problems.join(' '), { status: 400 });
+    }
+
     if (RESERVED_PATHS.indexOf(body.url) !== -1) {
         return new Response(
             'You may not register an Epsilon URL that is already in use.',
             { status: 400 },
         );
     }
-    body.url = body.url.replace(' ', '-');
 
     const { data: orgData, error: orgCreateError } = await supabaseClient.from(
         'organizations',
     )
         .insert({
-            ...body,
+            name: body.name,
+            url: body.url,
+            socials: body.socials,
+            mission: body.mission,
+            goals: body.goals,
+            purpose: body.purpose,
+            keywords: body.keywords,
+            tags: body.tags,
+            appointment_procedures: body.appointment_procedures,
+            uniqueness: body.uniqueness,
+            meeting_description: body.meeting_description,
+            meeting_schedule: body.meeting_schedule,
+            meeting_days: body.meeting_days,
+            commitment_level: body.commitment_level,
+            join_instructions: body.join_instructions,
+            is_returning: body.is_returning,
+            returning_info: body.returning_info,
+            fair: body.fair,
+            faculty_email: body.faculty_email,
         })
         .select(`
             id
