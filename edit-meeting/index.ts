@@ -1,6 +1,6 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import corsHeaders from '../_shared/cors.ts';
-import { sendOrgEmail } from '../_shared/utils.ts';
+import { roomRequiresAdvisor, sendOrgEmail } from '../_shared/utils.ts';
 
 import { datetime } from 'https://deno.land/x/ptera/mod.ts';
 
@@ -29,7 +29,8 @@ const returnSelect = `
             rooms (
                 id,
                 name,
-                floor
+                floor,
+                approval_required
             )
         `;
 
@@ -103,6 +104,11 @@ Deno.serve(async (req: Request) => {
         );
     }
 
+    const { data: oldMeeting } = await supabaseClient.from('meetings')
+        .select('room_id')
+        .eq('id', bodyJson.id)
+        .single();
+
     type rtyp = {
         id: number;
         is_public: boolean;
@@ -116,6 +122,7 @@ Deno.serve(async (req: Request) => {
             id: number;
             name: string;
             floor: number;
+            approval_required: boolean;
         };
     };
     const { data: updateMeetingData, error: updateMeetingError } =
@@ -149,11 +156,28 @@ Advisor: ${updateMeetingData[0].advisor || 'None'}` + footer;
 
     const emailSubject = `{ORG_NAME} updated a meeting | Epsilon`;
 
+    const movedToAdvisorRoom =
+        roomRequiresAdvisor(updateMeetingData[0].rooms) &&
+        updateMeetingData[0].rooms.id !== oldMeeting?.room_id;
+
+    const emailFaculty = bodyJson.notify_faculty === true ||
+        movedToAdvisorRoom;
+
     if (bodyJson.silent !== true) {
         await sendOrgEmail(
             updateMeetingData[0].organization_id,
             emailSubject,
             emailText,
+            emailFaculty,
+        );
+    } else if (emailFaculty) {
+        await sendOrgEmail(
+            updateMeetingData[0].organization_id,
+            emailSubject,
+            emailText,
+            true,
+            false,
+            true,
         );
     }
 

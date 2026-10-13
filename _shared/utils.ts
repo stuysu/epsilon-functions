@@ -16,6 +16,10 @@ type mtyp = {
     organizations: { name: string };
 };
 
+export const roomRequiresAdvisor = (
+    room?: { approval_required?: boolean | null } | null,
+) => room?.approval_required === true;
+
 const ERR_MEETING_TIME = 'Invalid meeting time or length.';
 const ERR_MAX_ROOMS =
     'Due to high demand, only 5 future in-person meetings can be booked per club.';
@@ -147,6 +151,7 @@ export const sendOrgEmail = async (
     text: string,
     notifyFaculty?: boolean,
     onlyAdmin?: boolean,
+    onlyFaculty?: boolean,
 ) => {
     const { data: membershipsData, error: membershipsError } =
         await supabaseAdmin
@@ -230,7 +235,11 @@ export const sendOrgEmail = async (
 
     for (const member of memberData) {
         // do not notify faculty
-        if (member.users.is_faculty && !notifyFaculty) {
+        if (member.users.is_faculty && !notifyFaculty && !onlyFaculty) {
+            continue;
+        }
+
+        if (onlyFaculty && !member.users.is_faculty) {
             continue;
         }
 
