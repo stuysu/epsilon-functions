@@ -124,10 +124,34 @@ Deno.serve(async (req: Request) => {
         .map((meeting) => meeting.meeting_id);
 
     if (conflictingMeetingIds.length) {
+        const { data: heldMeetings, error: heldError } = await supabaseClient
+            .from('meetings')
+            .select(`
+                id,
+                organizations!inner (
+                    name,
+                    state
+                )
+            `)
+            .in('id', conflictingMeetingIds)
+            .eq('organizations.state', 'ADMIN')
+            .returns<
+                { id: number; organizations: { name: string } }[]
+            >();
+
+        if (heldError || !heldMeetings) {
+            return new Response('Failed to fetch meetings', { status: 500 });
+        }
+
+        const heldIds = heldMeetings.map((meeting) => meeting.id);
+        const cancellableIds = conflictingMeetingIds.filter((id) =>
+            !heldIds.includes(id)
+        );
+
         const { data: removedMeetings, error: orgError } = await supabaseClient
             .from('meetings')
             .delete()
-            .in('id', conflictingMeetingIds)
+            .in('id', cancellableIds)
             .select(`
                 title,
                 start_time,
@@ -193,6 +217,25 @@ We sincerely apologize for the inconvenience.` + footer;
                 emailBody,
                 false,
                 false,
+            );
+        }
+
+        if (heldMeetings.length) {
+            const holders = [
+                ...new Set(
+                    heldMeetings.map((meeting) => meeting.organizations.name),
+                ),
+            ].join(', ');
+
+            const cancelled = removedMeetings.length
+                ? ` ${removedMeetings.length} other meeting${
+                    removedMeetings.length === 1 ? ' was' : 's were'
+                } cancelled.`
+                : '';
+
+            return new Response(
+                `This room is held by an admin club (${holders}) during that time, so it was not reserved.${cancelled}`,
+                { status: 409 },
             );
         }
     }
