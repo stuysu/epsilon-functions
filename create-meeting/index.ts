@@ -2,7 +2,11 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import corsHeaders from '../_shared/cors.ts';
 
 import { datetime } from 'https://deno.land/x/ptera/mod.ts';
-import { isValidMeeting, sendOrgEmail } from '../_shared/utils.ts';
+import {
+    isValidMeeting,
+    roomRequiresAdvisor,
+    sendOrgEmail,
+} from '../_shared/utils.ts';
 import { footer } from '../_shared/strings.ts';
 
 // import { createCalendarEvent } from '../_shared/google/calendar.ts'; doesn't work
@@ -30,7 +34,8 @@ const returnSelect = `
             rooms (
                 id,
                 name,
-                floor
+                floor,
+                approval_required
             )
         `;
 
@@ -111,6 +116,7 @@ Deno.serve(async (req: Request) => {
             id: number;
             name: string;
             floor: number;
+            approval_required: boolean;
         };
     };
     const { data: createMeetingData, error: createMeetingError } =
@@ -151,12 +157,24 @@ Advisor: ${createMeetingData[0].advisor || 'None'}` + footer;
 
     const emailSubject = `{ORG_NAME} scheduled a meeting | Epsilon`;
 
+    const emailFaculty = body.notify_faculty === true ||
+        roomRequiresAdvisor(createMeetingData[0].rooms);
+
     if (bodyJson.silent !== true) {
         await sendOrgEmail(
             body.organization_id,
             emailSubject,
             emailText,
-            body.notify_faculty,
+            emailFaculty,
+        );
+    } else if (emailFaculty) {
+        await sendOrgEmail(
+            body.organization_id,
+            emailSubject,
+            emailText,
+            true,
+            false,
+            true,
         );
     }
 
