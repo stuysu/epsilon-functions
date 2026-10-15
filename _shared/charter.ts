@@ -23,8 +23,9 @@ const RULES: { [field: string]: Rule } = {
         required: true,
         minChar: 3,
         maxChar: 40,
-        pattern: /^[a-z0-9-]+$/,
-        patternMessage: 'can only have lowercase letters, numbers and dashes',
+        pattern: /^[a-z0-9_-]+$/,
+        patternMessage:
+            'can only have letters, numbers, dashes and underscores',
     },
     socials: { label: 'Socials', maxChar: 100 },
     mission: {

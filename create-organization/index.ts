@@ -10,7 +10,6 @@ type BodyType = {
     mission: string;
     goals: string;
     purpose: string;
-    benefit: string;
     keywords: string;
     tags: string[];
     appointment_procedures: string;
