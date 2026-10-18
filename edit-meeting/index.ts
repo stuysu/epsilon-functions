@@ -4,7 +4,11 @@ import { roomRequiresAdvisor, sendOrgEmail } from '../_shared/utils.ts';
 
 import { datetime } from 'https://deno.land/x/ptera/mod.ts';
 
-import { isValidMeeting } from '../_shared/utils.ts';
+import {
+    isSiteAdmin,
+    isValidMeeting,
+    type PastPolicy,
+} from '../_shared/utils.ts';
 import { footer } from '../_shared/strings.ts';
 
 type BodyType = {
@@ -86,7 +90,34 @@ Deno.serve(async (req: Request) => {
         advisor: advisor,
     };
 
-    /* removed backend validation because it already exists in RLS */
+    const { data: existingMeeting } = await supabaseClient.from('meetings')
+        .select('start_time, end_time')
+        .eq('id', bodyJson.id)
+        .single();
+
+    if (!existingMeeting) {
+        return new Response('Meeting not found.', { status: 404 });
+    }
+
+    const siteAdmin = await isSiteAdmin(user.email);
+    const now = new Date();
+    if (!siteAdmin && new Date(existingMeeting.end_time) <= now) {
+        return new Response(
+            'This meeting has already ended and can no longer be edited.',
+            { status: 403 },
+        );
+    }
+
+    let pastPolicy: PastPolicy = 'none';
+    if (siteAdmin) {
+        pastPolicy = 'any';
+    } else if (
+        new Date(existingMeeting.start_time) <= now &&
+        new Date(body.start_time).getTime() ===
+            new Date(existingMeeting.start_time).getTime()
+    ) {
+        pastPolicy = 'started';
+    }
 
     const validationError = await isValidMeeting(
         body.start_time,
@@ -94,6 +125,7 @@ Deno.serve(async (req: Request) => {
         body.room_id,
         bodyJson.id,
         bodyJson.organization_id,
+        pastPolicy,
     );
     if (validationError) {
         return new Response(

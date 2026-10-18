@@ -26,12 +26,26 @@ const ERR_MAX_ROOMS =
 const ERR_ROOM = 'Invalid meeting room.';
 const ERR = 'Malformed request. Contact it@stuysu.org.';
 
+export const isSiteAdmin = async (email?: string | null) => {
+    if (!email) return false;
+    const { data, error } = await supabaseAdmin
+        .from('permissions')
+        .select('permission, users!inner ( email )')
+        .eq('permission', 'ADMIN')
+        .eq('users.email', email)
+        .limit(1);
+    return !error && !!data && data.length > 0;
+};
+
+export type PastPolicy = 'none' | 'started' | 'any';
+
 export const isValidMeeting = async (
     start_time: string,
     end_time: string,
     room_id?: number | null,
     meeting_id?: number,
     organization_id?: number | null,
+    pastPolicy: PastPolicy = 'none',
 ) => {
     // validate dates
     if (!start_time || !end_time) {
@@ -39,9 +53,11 @@ export const isValidMeeting = async (
     }
     const start = new Date(start_time);
     const end = new Date(end_time);
+    const nowMs = (new Date()).getTime();
     if (
         isNaN(start.getTime()) || isNaN(end.getTime()) || // invalid timestamps
-        start.getTime() < (new Date()).getTime() || // meeting starts in past
+        (pastPolicy === 'none' && start.getTime() < nowMs) || // meeting starts in past
+        (pastPolicy === 'started' && end.getTime() <= nowMs) ||
         end.getTime() - start.getTime() < MIN_LENGTH * 60 * 1000 // meeting is too short (including "negative" length)
     ) {
         return ERR_MEETING_TIME;
