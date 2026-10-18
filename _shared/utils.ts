@@ -137,7 +137,22 @@ export const isValidMeeting = async (
             return ERR;
         }
 
-        if (!roomData.available_days.includes(dayOfWeek)) {
+        const { data: grants, error: grantsFetchError } = await supabaseAdmin
+            .from('room_grants')
+            .select('organization_id')
+            .eq('room_id', room_id);
+        if (grantsFetchError) {
+            return ERR + ' (Code: BAD_GRANTS)';
+        }
+
+        const hasGrant = (grants ?? []).some((g) =>
+            g.organization_id === organization_id
+        );
+        const isWeekend = dayOfWeek === 'SATURDAY' || dayOfWeek === 'SUNDAY';
+        if (
+            isWeekend ||
+            (!hasGrant && !roomData.available_days.includes(dayOfWeek))
+        ) {
             return ERR_ROOM;
         }
     }
