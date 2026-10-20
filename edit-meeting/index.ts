@@ -5,6 +5,7 @@ import { roomRequiresAdvisor, sendOrgEmail } from '../_shared/utils.ts';
 import { datetime } from 'https://deno.land/x/ptera/mod.ts';
 
 import {
+    checkAdvisor,
     isSiteAdmin,
     isValidMeeting,
     type PastPolicy,
@@ -91,7 +92,7 @@ Deno.serve(async (req: Request) => {
     };
 
     const { data: existingMeeting } = await supabaseClient.from('meetings')
-        .select('start_time, end_time')
+        .select('start_time, end_time, advisor')
         .eq('id', bodyJson.id)
         .single();
 
@@ -135,6 +136,16 @@ Deno.serve(async (req: Request) => {
             },
         );
     }
+
+    const advisorCheck = await checkAdvisor(
+        body.advisor,
+        body.room_id,
+        existingMeeting.advisor,
+    );
+    if (advisorCheck.error) {
+        return new Response(advisorCheck.error, { status: 400 });
+    }
+    body.advisor = advisorCheck.advisor;
 
     const { data: oldMeeting } = await supabaseClient.from('meetings')
         .select('room_id')
