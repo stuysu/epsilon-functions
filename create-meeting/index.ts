@@ -3,6 +3,7 @@ import corsHeaders from '../_shared/cors.ts';
 
 import { datetime } from 'https://deno.land/x/ptera/mod.ts';
 import {
+    checkAdvisor,
     isValidMeeting,
     roomRequiresAdvisor,
     sendOrgEmail,
@@ -103,6 +104,12 @@ Deno.serve(async (req: Request) => {
             status: 400,
         });
     }
+
+    const advisorCheck = await checkAdvisor(body.advisor, body.room_id);
+    if (advisorCheck.error) {
+        return new Response(advisorCheck.error, { status: 400 });
+    }
+    body.advisor = advisorCheck.advisor;
 
     type rtyp = {
         id: number;

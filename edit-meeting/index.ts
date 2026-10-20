@@ -5,6 +5,7 @@ import { roomRequiresAdvisor, sendOrgEmail } from '../_shared/utils.ts';
 import { datetime } from 'https://deno.land/x/ptera/mod.ts';
 
 import {
+    checkAdvisor,
     isSiteAdmin,
     isValidMeeting,
     type PastPolicy,
@@ -78,6 +79,7 @@ Deno.serve(async (req: Request) => {
     const bodyJson = await req
         .json(); /* bodyJson here also includes: notify-faculty and id <- meeting id */
 
+    const advisorOmitted = bodyJson.advisor === undefined;
     const advisor = bodyJson.advisor?.trim() || null;
 
     const body: BodyType = {
@@ -91,7 +93,7 @@ Deno.serve(async (req: Request) => {
     };
 
     const { data: existingMeeting } = await supabaseClient.from('meetings')
-        .select('start_time, end_time')
+        .select('start_time, end_time, advisor, room_id')
         .eq('id', bodyJson.id)
         .single();
 
@@ -134,6 +136,20 @@ Deno.serve(async (req: Request) => {
                 status: 400,
             },
         );
+    }
+
+    const advisorCheck = await checkAdvisor(
+        advisorOmitted ? existingMeeting.advisor : body.advisor,
+        body.room_id === undefined ? existingMeeting.room_id : body.room_id,
+        existingMeeting.advisor,
+    );
+    if (advisorCheck.error) {
+        return new Response(advisorCheck.error, { status: 400 });
+    }
+    if (advisorOmitted) {
+        delete body.advisor;
+    } else {
+        body.advisor = advisorCheck.advisor;
     }
 
     const { data: oldMeeting } = await supabaseClient.from('meetings')

@@ -26,6 +26,71 @@ const ERR_MAX_ROOMS =
 const ERR_ROOM = 'Invalid meeting room.';
 const ERR = 'Malformed request. Contact it@stuysu.org.';
 
+const ERR_ADVISOR_REQUIRED =
+    'This room requires a faculty advisor. Choose one from the list.';
+const ERR_ADVISOR_INVALID =
+    'The advisor must be a registered faculty member. Choose one from the list.';
+
+const normalizeName = (name: string) =>
+    name.replace(/\s+/g, ' ').trim().toLowerCase();
+
+export const checkAdvisor = async (
+    advisor?: string | null,
+    roomId?: number | null,
+    existingAdvisor?: string | null,
+): Promise<{ advisor: string | null; error?: string }> => {
+    let required = false;
+    if (roomId) {
+        const { data: room, error: roomError } = await supabaseAdmin
+            .from('rooms')
+            .select('approval_required')
+            .eq('id', roomId)
+            .single();
+        if (roomError) {
+            return {
+                advisor: advisor ?? null,
+                error: ERR + ' (Code: BAD_ROOM)',
+            };
+        }
+        required = roomRequiresAdvisor(room);
+    }
+
+    const requested = advisor?.trim() || null;
+    if (!requested) {
+        return required
+            ? { advisor: null, error: ERR_ADVISOR_REQUIRED }
+            : { advisor: null };
+    }
+
+    const { data: faculty, error: facultyError } = await supabaseAdmin
+        .from('users')
+        .select('first_name, last_name')
+        .eq('is_faculty', true);
+    if (facultyError) {
+        return {
+            advisor: advisor ?? null,
+            error: ERR + ' (Code: BAD_FACULTY)',
+        };
+    }
+
+    const match = (faculty ?? []).find((member) =>
+        normalizeName(`${member.first_name} ${member.last_name}`) ===
+            normalizeName(requested)
+    );
+    if (match) {
+        return { advisor: `${match.first_name} ${match.last_name}`.trim() };
+    }
+
+    if (
+        !required && existingAdvisor &&
+        normalizeName(existingAdvisor) === normalizeName(requested)
+    ) {
+        return { advisor: requested };
+    }
+
+    return { advisor: requested, error: ERR_ADVISOR_INVALID };
+};
+
 export const isSiteAdmin = async (email?: string | null) => {
     if (!email) return false;
     const { data, error } = await supabaseAdmin
