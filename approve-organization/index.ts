@@ -5,6 +5,7 @@ import {
     sendOrgEmail,
 } from '../_shared/utils.ts';
 import corsHeaders, { withCors } from '../_shared/cors.ts';
+import supabaseAdmin from '../_shared/supabaseAdmin.ts';
 import { footer } from '../_shared/strings.ts';
 
 // import { initOrgCalendar } from '../_shared/google/calendar.ts'; REMOVE FOR NOW: DOESN'T WORK IN PRODUCTION
@@ -93,7 +94,8 @@ Deno.serve(withCors(async (req: Request) => {
     const { count } = await supabaseClient.from('memberships')
         .select(`user_id`, { count: 'exact', head: true })
         .eq('organization_id', organization_id)
-        .eq('active', true);
+        .eq('active', true)
+        .neq('role', 'ADVISOR');
     const org_members = count ?? 0;
 
     const { data: orgData, error: approveError } = await supabaseClient.from(
@@ -120,6 +122,8 @@ Deno.serve(withCors(async (req: Request) => {
     }
 
     const approvedOrgName = orgData[0].name;
+
+    await supabaseAdmin.rpc('add_charter_advisor', { org_id: organization_id });
 
     /* send emails  */
     const emailBody =

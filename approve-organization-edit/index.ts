@@ -1,6 +1,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { isSiteAdmin, sendOrgEmail } from '../_shared/utils.ts';
 import corsHeaders, { withCors } from '../_shared/cors.ts';
+import supabaseAdmin from '../_shared/supabaseAdmin.ts';
 import { footer } from '../_shared/strings.ts';
 import {
     cleanCharter,
@@ -156,6 +157,8 @@ Deno.serve(withCors(async (req: Request) => {
     }
 
     const updatedOrgName = orgData[0].name;
+
+    await supabaseAdmin.rpc('add_charter_advisor', { org_id: organization_id });
 
     /* Try deleting edit */
     const { error: deleteEditError } = await supabaseClient.from(

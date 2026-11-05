@@ -2,9 +2,8 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import corsHeaders, { withCors } from '../_shared/cors.ts';
 import supabaseAdmin from '../_shared/supabaseAdmin.ts';
 import {
-    fetchMemberRequirement,
     sendMemberEmail,
-    sendOrgEmail,
+    unlockOrganizationIfReady,
 } from '../_shared/utils.ts';
 import { footer } from '../_shared/strings.ts';
 import { readJson } from '../_shared/http.ts';
@@ -118,55 +117,7 @@ We hope you enjoy your club experience at Stuy.` + footer;
     sendMemberEmail(member_id, emailSubject, emailBody);
 
     /* ALSO CHECK IF CLUB IS PENDING AND SHOULD IT BE UNLOCKED */
-    const orgId = memberData[0].organizations.id;
-
-    const { data: orgData, error: orgDataError } = await supabaseClient.from(
-        'organizations',
-    )
-        .select(`
-            state,
-            memberships!inner (
-                active
-            )
-        `)
-        .eq('id', orgId);
-
-    if (orgData && orgData.length && !orgDataError) {
-        const org = orgData[0];
-
-        const required_members = await fetchMemberRequirement();
-
-        if (
-            org.state === 'LOCKED' &&
-            org.memberships.filter((m) => m.active).length >= required_members
-        ) {
-            /* SEND ORG ADMINS AN EMAIL ABOUT THIS */
-
-            /* asynchronously email admins to prevent function from hanging on client */
-            const emailText =
-                `You are receiving this email because your organization {ORG_NAME} has been approved and unlocked.
-
-You can begin creating meetings, making posts, and your organization will be displayed on the club catalog.
-
-We hope you enjoy your club experience at Stuy!` + footer;
-            const subject = `Organization Unlocked: {ORG_NAME} | Epsilon`;
-
-            /* unlock first, and only email if this request did the unlocking,
-               so concurrent approvals don't send it twice */
-            const { data: unlocked, error: unlockError } = await supabaseAdmin
-                .from('organizations')
-                .update({ state: 'UNLOCKED' })
-                .eq('id', orgId)
-                .eq('state', 'LOCKED')
-                .select('id');
-
-            if (unlockError) {
-                console.error('Failed to unlock organization', unlockError);
-            } else if (unlocked && unlocked.length) {
-                await sendOrgEmail(orgId, subject, emailText, false, true);
-            }
-        }
-    }
+    await unlockOrganizationIfReady(memberData[0].organizations.id);
 
     return new Response(
         JSON.stringify({
