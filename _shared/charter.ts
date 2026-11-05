@@ -74,6 +74,20 @@ const MAX_KEYWORDS = 3;
 const stripWhitespace = (value: string) =>
     value.replace(/[ \t]+$/gm, '').trim();
 
+/* people usually leave off the https://, so only check it when it's there */
+const isWebLink = (value: string) => {
+    try {
+        const { protocol, hostname, username, password } = new URL(
+            /^[a-z][a-z0-9+.-]*:\/\//i.test(value) ? value : `https://${value}`,
+        );
+        return (protocol === 'http:' || protocol === 'https:') &&
+            !username && !password && !value.endsWith(',') &&
+            /\.[a-z][a-z0-9-]+$/.test(hostname);
+    } catch {
+        return false;
+    }
+};
+
 const countWords = (value: string) =>
     value.trim() ? value.trim().split(/\s+/).length : 0;
 
@@ -160,6 +174,20 @@ export const validateCharter = (
 
         if (rule.pattern && !rule.pattern.test(value)) {
             problems.push(`${rule.label} ${rule.patternMessage}.`);
+        }
+    }
+
+    /* the charter form asks for links with just a space between them */
+    if (typeof fields.socials === 'string' && fields.socials) {
+        const invalid = fields.socials.split(/\s+/).filter((social: string) =>
+            social && !isWebLink(social)
+        );
+        if (invalid.length) {
+            problems.push(
+                `Socials must be links separated by spaces, like instagram.com/stuysu. Not a valid link: ${
+                    invalid.join(', ')
+                }.`,
+            );
         }
     }
 
