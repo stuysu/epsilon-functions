@@ -32,26 +32,28 @@ Deno.serve(async (req: Request) => {
         return new Response('Failed to fetch user.', { status: 500 });
     }
 
-    const { data: verifiedUser, error: verifiedUserError } =
-        await supabaseClient
-            .from('permissions')
-            .select('permission,users!inner(id)')
-            .eq('users.email', user.email)
-            .maybeSingle();
+    /* a user can hold several permissions, so look through all of them */
+    const { data: permissions, error: permissionsError } = await supabaseClient
+        .from('permissions')
+        .select('permission,users!inner(id)')
+        .eq('users.email', user.email);
 
-    if (verifiedUserError) {
-        return new Response('Failed to fetch user id.', {
+    if (permissionsError) {
+        console.log(permissionsError);
+        return new Response(`Failed to fetch user id.`, {
             status: 500,
         });
     }
 
-    if (!verifiedUser) {
+    if (!permissions?.length) {
         return new Response('User is unauthorized.', { status: 401 });
     }
 
     if (
-        verifiedUser.permission !== 'ADMIN' &&
-        verifiedUser.permission !== 'VALENTINES'
+        !permissions.some(
+            ({ permission }) =>
+                permission === 'ADMIN' || permission === 'VALENTINES',
+        )
     ) {
         return new Response('Permission Denied', { status: 403 });
     }

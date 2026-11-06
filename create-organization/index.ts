@@ -39,6 +39,17 @@ const RESERVED_PATHS = [
     'valentines',
     'today',
     'announcements',
+    // the site's own top-level pages, which a club URL would be hidden behind
+    'stuyactivities',
+    'charter',
+    'archives',
+    'activities-support',
+    'arista-landing',
+    'confirm-join',
+    'communications',
+    'preferences',
+    'profile',
+    'vote',
 ];
 
 /* accepts JSON */
@@ -106,7 +117,7 @@ Deno.serve(async (req: Request) => {
         return new Response(problems.join(' '), { status: 400 });
     }
 
-    if (RESERVED_PATHS.indexOf(body.url) !== -1) {
+    if (RESERVED_PATHS.includes(body.url.toLowerCase())) {
         return new Response(
             'You may not register an Epsilon URL that is already in use.',
             { status: 400 },

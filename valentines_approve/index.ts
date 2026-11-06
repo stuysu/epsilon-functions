@@ -28,27 +28,28 @@ Deno.serve(async (req: Request) => {
         return new Response('Failed to fetch user.', { status: 500 });
     }
 
-    const { data: verifiedUser, error: verifiedUserError } =
-        await supabaseClient
-            .from('permissions')
-            .select('permission,users!inner(id)')
-            .eq('users.email', user.email)
-            .maybeSingle();
+    /* a user can hold several permissions, so look through all of them */
+    const { data: permissions, error: permissionsError } = await supabaseClient
+        .from('permissions')
+        .select('permission,users!inner(id)')
+        .eq('users.email', user.email);
 
-    if (verifiedUserError) {
-        console.log(verifiedUserError);
+    if (permissionsError) {
+        console.log(permissionsError);
         return new Response(`Failed to fetch user id.`, {
             status: 500,
         });
     }
 
-    if (!verifiedUser) {
+    if (!permissions?.length) {
         return new Response('User is unauthorized.', { status: 401 });
     }
 
     if (
-        verifiedUser.permission !== 'ADMIN' &&
-        verifiedUser.permission !== 'VALENTINES'
+        !permissions.some(
+            ({ permission }) =>
+                permission === 'ADMIN' || permission === 'VALENTINES',
+        )
     ) {
         return new Response('Permission Denied', { status: 403 });
     }
@@ -81,7 +82,8 @@ Deno.serve(async (req: Request) => {
         .from('valentinesmessages')
         .update({
             verified_at: currentTime,
-            verified_by: verifiedUser.users.id,
+            // each permission row belongs to one user, though the inferred type is a list
+            verified_by: (permissions[0].users as unknown as { id: number }).id,
         })
         .eq('id', body.message_id);
 

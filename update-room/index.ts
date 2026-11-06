@@ -37,7 +37,8 @@ Deno.serve(async (req: Request) => {
         ais_days,
     }: BodyType = await req.json();
 
-    if (!room_id || !available_days || !floor || !name) {
+    /* floor 0 is a real floor, so only a missing floor is an error */
+    if (!room_id || !available_days || floor == null || !name) {
         return new Response('Missing field', { status: 400 });
     }
 
