@@ -4,6 +4,7 @@ import corsHeaders, { withCors } from '../_shared/cors.ts';
 import { footer } from '../_shared/strings.ts';
 import {
     cleanCharter,
+    EDITABLE_CHARTER_FIELDS,
     RESERVED_PATHS,
     validateCharter,
 } from '../_shared/charter.ts';
@@ -88,6 +89,21 @@ Deno.serve(withCors(async (req: Request) => {
     }
     if (!pendingEdit) {
         return new Response('Organization edit not found.', { status: 404 });
+    }
+
+    if (typeof updated_fields !== 'object' || Array.isArray(updated_fields)) {
+        return new Response('Invalid updated fields.', { status: 400 });
+    }
+    const notEditable = Object.keys(updated_fields).filter((field) =>
+        !EDITABLE_CHARTER_FIELDS.includes(field)
+    );
+    if (notEditable.length) {
+        return new Response(
+            `These fields can't be changed by a charter edit: ${
+                notEditable.join(', ')
+            }.`,
+            { status: 400 },
+        );
     }
 
     const cleanedFields = cleanCharter(updated_fields);

@@ -84,9 +84,23 @@ Deno.serve(withCors(async (req: Request) => {
             `)
         .returns<omtyp[]>();
 
-    /* send error if failed to join organization */
-    if (updateMemberError || !memberData || !memberData.length) {
+    if (updateMemberError) {
         return new Response('Error updating member.', { status: 422 }); // unprocessable entity
+    }
+
+    /* nothing updated: either there's no such membership, or RLS hid it
+       because the caller isn't an active admin of that club */
+    if (!memberData || !memberData.length) {
+        const { data: existing } = await supabaseAdmin
+            .from('memberships')
+            .select('id')
+            .eq('id', member_id)
+            .maybeSingle();
+        return existing
+            ? new Response('You are not allowed to approve this member.', {
+                status: 403,
+            })
+            : new Response('Membership not found.', { status: 404 });
     }
 
     /* if success, then send email to member */
