@@ -1,41 +1,25 @@
 import corsHeaders, { withCors } from '../_shared/cors.ts';
 import supabaseAdmin from '../_shared/supabaseAdmin.ts';
+import { isSiteAdmin } from '../_shared/utils.ts';
 
 Deno.serve(withCors(async (req: Request) => {
     if (req.method === 'OPTIONS') {
         return new Response('ok', { headers: corsHeaders });
     }
 
-    const authHeader = req.headers.get('Authorization')!;
-
-    const jwt = authHeader.split(' ')[1];
+    const jwt = req.headers.get('Authorization')?.split(' ')[1];
+    if (!jwt) {
+        return new Response('Missing authorization.', { status: 401 });
+    }
     const { data: userData } = await supabaseAdmin.auth.getUser(jwt);
     const user = userData.user;
 
     if (!user) {
-        return new Response('Failed to fetch user.', { status: 500 });
+        return new Response('Failed to fetch user.', { status: 401 });
     }
 
-    const { data: verifiedUser, error: verifiedUserError } = await supabaseAdmin
-        .from('permissions')
-        .select('permission,users!inner(id)')
-        .eq('users.email', user.email)
-        .maybeSingle();
-
-    if (verifiedUserError) {
-        console.log(verifiedUserError);
-        return new Response(`Failed to fetch user id.`, {
-            status: 500,
-        });
-    }
-
-    if (!verifiedUser) {
-        return new Response('User is unauthorized.', { status: 401 });
-    }
-
-    if (
-        verifiedUser.permission !== 'ADMIN'
-    ) {
+    /* a user can hold several permissions (e.g. ADMIN and VALENTINES) */
+    if (!(await isSiteAdmin(user.email))) {
         return new Response('Permission Denied', { status: 403 });
     }
     const { data: folders, error: folderError } = await supabaseAdmin.storage

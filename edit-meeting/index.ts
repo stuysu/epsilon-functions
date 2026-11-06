@@ -100,6 +100,12 @@ Deno.serve(withCors(async (req: Request) => {
         return new Response('Invalid advisor.', { status: 400 });
     }
 
+    if (
+        bodyJson.room_id !== undefined && bodyJson.room_id !== null &&
+        !Number.isInteger(bodyJson.room_id)
+    ) {
+        return new Response('Invalid room.', { status: 400 });
+    }
     const advisorOmitted = bodyJson.advisor === undefined;
     const advisor = bodyJson.advisor?.trim() || null;
 
@@ -177,10 +183,12 @@ Deno.serve(withCors(async (req: Request) => {
         pastPolicy = 'started';
     }
 
+    /* when the room isn't being changed, still check the meeting's current
+       room against the new times */
     const validationError = await isValidMeeting(
         body.start_time,
         body.end_time,
-        body.room_id,
+        body.room_id === undefined ? existingMeeting.room_id : body.room_id,
         bodyJson.id,
         organizationId,
         pastPolicy,

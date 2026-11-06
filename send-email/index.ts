@@ -70,6 +70,13 @@ Deno.serve(withCors(async (req: Request) => {
         return new Response('Invalid recipient type.', { status: 400 });
     }
 
+    if (
+        recipient_type === 'ORGANIZATION' &&
+        !Number.isInteger(Number(recipient_address))
+    ) {
+        return new Response('Invalid organization.', { status: 400 });
+    }
+
     if (content_parameters != null && !Array.isArray(content_parameters)) {
         return new Response('Invalid content parameters.', { status: 400 });
     }

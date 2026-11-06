@@ -226,3 +226,31 @@ export const validateCharter = (
 
     return problems;
 };
+
+/* the site's own paths, which a club URL would hide or be hidden behind */
+export const RESERVED_PATHS = [
+    'catalog',
+    'create',
+    'about',
+    'meetings',
+    'rules',
+    'archive',
+    'modules',
+    'admin',
+    'attendance',
+    'opportunities',
+    'valentines',
+    'today',
+    'announcements',
+    // the site's own top-level pages, which a club URL would be hidden behind
+    'stuyactivities',
+    'charter',
+    'archives',
+    'activities-support',
+    'arista-landing',
+    'confirm-join',
+    'communications',
+    'preferences',
+    'profile',
+    'vote',
+];

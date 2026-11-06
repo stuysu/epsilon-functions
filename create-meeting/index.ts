@@ -82,6 +82,18 @@ Deno.serve(withCors(async (req: Request) => {
     if (!bodyJson) {
         return new Response('Invalid JSON body.', { status: 400 });
     }
+    if (
+        bodyJson.room_id !== undefined && bodyJson.room_id !== null &&
+        !Number.isInteger(bodyJson.room_id)
+    ) {
+        return new Response('Invalid room.', { status: 400 });
+    }
+    if (
+        bodyJson.advisor !== undefined && bodyJson.advisor !== null &&
+        typeof bodyJson.advisor !== 'string'
+    ) {
+        return new Response('Invalid advisor.', { status: 400 });
+    }
     const advisor = bodyJson.advisor?.trim() || null;
     const body: BodyType = {
         organization_id: bodyJson.organization_id,

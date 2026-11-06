@@ -137,11 +137,20 @@ You can begin creating meetings, making posts, and your organization will be dis
 We hope you enjoy your club experience at Stuy!` + footer;
             const subject = `Organization Unlocked: {ORG_NAME} | Epsilon`;
 
-            await sendOrgEmail(orgId, subject, emailText, false, true);
-
-            await supabaseAdmin.from('organizations')
+            /* unlock first, and only email if this request did the unlocking,
+               so concurrent approvals don't send it twice */
+            const { data: unlocked, error: unlockError } = await supabaseAdmin
+                .from('organizations')
                 .update({ state: 'UNLOCKED' })
-                .eq('id', orgId);
+                .eq('id', orgId)
+                .eq('state', 'LOCKED')
+                .select('id');
+
+            if (unlockError) {
+                console.error('Failed to unlock organization', unlockError);
+            } else if (unlocked && unlocked.length) {
+                await sendOrgEmail(orgId, subject, emailText, false, true);
+            }
         }
     }
 

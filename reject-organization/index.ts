@@ -113,6 +113,7 @@ Deno.serve(withCors(async (req: Request) => {
             )
         `)
         .eq('organization_id', organization_id)
+        .eq('active', true)
         .in('role', ['ADMIN', 'CREATOR'])
         .returns<orgAdminType[]>();
 

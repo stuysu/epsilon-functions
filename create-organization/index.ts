@@ -1,7 +1,11 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import corsHeaders, { withCors } from '../_shared/cors.ts';
 import supabaseAdmin from '../_shared/supabaseAdmin.ts';
-import { cleanCharter, validateCharter } from '../_shared/charter.ts';
+import {
+    cleanCharter,
+    RESERVED_PATHS,
+    validateCharter,
+} from '../_shared/charter.ts';
 import { dbErrorStatus, readJson } from '../_shared/http.ts';
 
 type BodyType = {
@@ -25,33 +29,6 @@ type BodyType = {
     fair?: boolean;
     faculty_email?: string;
 };
-
-const RESERVED_PATHS = [
-    'catalog',
-    'create',
-    'about',
-    'meetings',
-    'rules',
-    'archive',
-    'modules',
-    'admin',
-    'attendance',
-    'opportunities',
-    'valentines',
-    'today',
-    'announcements',
-    // the site's own top-level pages, which a club URL would be hidden behind
-    'stuyactivities',
-    'charter',
-    'archives',
-    'activities-support',
-    'arista-landing',
-    'confirm-join',
-    'communications',
-    'preferences',
-    'profile',
-    'vote',
-];
 
 /* accepts JSON */
 Deno.serve(withCors(async (req: Request) => {
@@ -177,6 +154,10 @@ Deno.serve(withCors(async (req: Request) => {
         });
 
     if (membershipError) {
+        /* don't leave a club behind with no creator holding its name and URL */
+        await supabaseAdmin.from('organizations')
+            .delete()
+            .eq('id', orgData[0].id);
         return new Response(
             'Error creating membership. Please contact it@stuysu.org as soon as possible.',
             { status: 500 },

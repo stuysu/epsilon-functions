@@ -108,12 +108,7 @@ Recipient: ${receiver.email}
 Content: ${messageData.message || '[empty message]'}
 
 You may submit a new message if desired.` + footer;
-        await Transport.sendMail({
-            from: Deno.env.get('NODEMAILER_FROM')!,
-            to: sender.email,
-            subject: '[Epsilon Valentines] Message Removed',
-            text,
-        });
+        /* delete first so the sender is only told once it's really gone */
         const { error: messageDeleteError } = await supabaseClient
             .from('valentinesmessages')
             .delete()
@@ -124,6 +119,13 @@ You may submit a new message if desired.` + footer;
                 status: 500,
             });
         }
+
+        await Transport.sendMail({
+            from: Deno.env.get('NODEMAILER_FROM')!,
+            to: sender.email,
+            subject: '[Epsilon Valentines] Message Removed',
+            text,
+        });
 
         return new Response(
             JSON.stringify({}),

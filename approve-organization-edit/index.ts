@@ -1,8 +1,12 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import { sendOrgEmail } from '../_shared/utils.ts';
+import { isSiteAdmin, sendOrgEmail } from '../_shared/utils.ts';
 import corsHeaders, { withCors } from '../_shared/cors.ts';
 import { footer } from '../_shared/strings.ts';
-import { cleanCharter, validateCharter } from '../_shared/charter.ts';
+import {
+    cleanCharter,
+    RESERVED_PATHS,
+    validateCharter,
+} from '../_shared/charter.ts';
 import { dbErrorStatus, readJson } from '../_shared/http.ts';
 
 type BodyType = {
@@ -65,11 +69,42 @@ Deno.serve(withCors(async (req: Request) => {
         return new Response('User is unauthorized.', { status: 401 });
     }
 
+    /* only site admins review charter edits */
+    if (!(await isSiteAdmin(user.email))) {
+        return new Response('User is unauthorized.', { status: 403 });
+    }
+
+    /* the edit must exist and belong to this organization */
+    const { data: pendingEdit, error: editFetchError } = await supabaseClient
+        .from('organizationedits')
+        .select('id')
+        .eq('id', edit_id)
+        .eq('organization_id', organization_id)
+        .maybeSingle();
+    if (editFetchError) {
+        return new Response('Failed to fetch organization edit.', {
+            status: 500,
+        });
+    }
+    if (!pendingEdit) {
+        return new Response('Organization edit not found.', { status: 404 });
+    }
+
     const cleanedFields = cleanCharter(updated_fields);
 
     const problems = validateCharter(cleanedFields, false);
     if (problems.length) {
         return new Response(problems.join(' '), { status: 400 });
+    }
+
+    if (
+        typeof cleanedFields.url === 'string' &&
+        RESERVED_PATHS.includes(cleanedFields.url)
+    ) {
+        return new Response(
+            'You may not register an Epsilon URL that is already in use.',
+            { status: 400 },
+        );
     }
 
     type orgTyp = {
@@ -111,7 +146,8 @@ Deno.serve(withCors(async (req: Request) => {
         'organizationedits',
     )
         .delete()
-        .eq('id', edit_id);
+        .eq('id', edit_id)
+        .eq('organization_id', organization_id);
 
     type orgAdminType = {
         id: number;

@@ -183,12 +183,17 @@ export const isValidMeeting = async (
         let bookedRooms: roomMeta[] = Array.isArray(meetings) ? meetings : [];
         if (meeting_id) {
             bookedRooms = bookedRooms.filter((meeting) =>
-                meeting.meeting_id !== meeting_id
+                Number(meeting.meeting_id) !== Number(meeting_id)
             );
         }
 
         // room is booked at that time
-        if (bookedRooms.find((meeting) => meeting.room_id === room_id)) {
+        /* compare as numbers so a room_id sent as a string can't slip past */
+        if (
+            bookedRooms.find((meeting) =>
+                Number(meeting.room_id) === Number(room_id)
+            )
+        ) {
             return ERR_ROOM;
         }
 

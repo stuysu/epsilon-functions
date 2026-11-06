@@ -82,6 +82,10 @@ Deno.serve(withCors(async (req: Request) => {
 
     /* validation via RLS */
 
+    if (available_days != null && !Array.isArray(available_days)) {
+        return new Response('Invalid available days.', { status: 400 });
+    }
+
     /* update room */
     const { data: updatedRooms, error: roomUpdateError } = await supabaseClient
         .from('rooms')
@@ -90,7 +94,7 @@ Deno.serve(withCors(async (req: Request) => {
             floor,
             approval_required,
             comments,
-            available_days: available_days.join(', '),
+            available_days: (available_days ?? []).join(', '),
             ais_days,
         })
         .eq('id', room_id)
