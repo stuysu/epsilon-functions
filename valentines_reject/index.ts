@@ -5,6 +5,7 @@ import { datetime } from 'https://deno.land/x/ptera/mod.ts';
 import Transport from '../_shared/emailTransport.ts';
 import { footer } from '../_shared/strings.ts';
 import { safeSupabaseQuery } from '../_shared/utils.ts';
+import { dbErrorStatus, readJson } from '../_shared/http.ts';
 
 type BodyType = {
     message_id: number;
@@ -24,12 +25,12 @@ Deno.serve(async (req: Request) => {
         { global: { headers: { Authorization: authHeader } } },
     );
 
-    const jwt = authHeader.split(' ')[1];
+    const jwt = authHeader?.split(' ')[1];
     const { data: userData } = await supabaseClient.auth.getUser(jwt);
     const user = userData.user;
 
     if (!user) {
-        return new Response('Failed to fetch user.', { status: 500 });
+        return new Response('Failed to fetch user.', { status: 401 });
     }
 
     /* a user can hold several permissions, so look through all of them */
@@ -45,8 +46,9 @@ Deno.serve(async (req: Request) => {
         });
     }
 
+    /* signed in, but holds no permissions */
     if (!permissions?.length) {
-        return new Response('User is unauthorized.', { status: 401 });
+        return new Response('User is unauthorized.', { status: 403 });
     }
 
     if (
@@ -58,7 +60,11 @@ Deno.serve(async (req: Request) => {
         return new Response('Permission Denied', { status: 403 });
     }
 
-    const body = await req.json() as BodyType;
+    const body = await readJson(req) as BodyType | null;
+
+    if (!body) {
+        return new Response('Invalid JSON body.', { status: 400 });
+    }
 
     if (!body.message_id) {
         return new Response('No message id provided.', { status: 400 });
@@ -72,7 +78,7 @@ Deno.serve(async (req: Request) => {
 
     if (messageDataError) {
         return new Response('Failed to fetch message', {
-            status: 500,
+            status: dbErrorStatus(messageDataError),
         });
     }
     if (messageData.verified_by && messageData.verified_at) {

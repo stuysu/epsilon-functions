@@ -21,7 +21,10 @@ Deno.serve(async (req: Request) => {
         .single();
 
     if (scheduleError) {
-        return new Response('Failed to fetch schedule.', { status: 500 });
+        return new Response('Failed to fetch schedule.', {
+            // PGRST116: no schedule with that name
+            status: scheduleError.code === 'PGRST116' ? 404 : 500,
+        });
     }
 
     return new Response(

@@ -2,6 +2,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import corsHeaders from '../_shared/cors.ts';
 
 import { datetime } from 'https://deno.land/x/ptera/mod.ts';
+import { dbErrorStatus, readJson } from '../_shared/http.ts';
 
 type BodyType = {
     message_id: number;
@@ -20,12 +21,12 @@ Deno.serve(async (req: Request) => {
         { global: { headers: { Authorization: authHeader } } },
     );
 
-    const jwt = authHeader.split(' ')[1];
+    const jwt = authHeader?.split(' ')[1];
     const { data: userData } = await supabaseClient.auth.getUser(jwt);
     const user = userData.user;
 
     if (!user) {
-        return new Response('Failed to fetch user.', { status: 500 });
+        return new Response('Failed to fetch user.', { status: 401 });
     }
 
     /* a user can hold several permissions, so look through all of them */
@@ -41,8 +42,9 @@ Deno.serve(async (req: Request) => {
         });
     }
 
+    /* signed in, but holds no permissions */
     if (!permissions?.length) {
-        return new Response('User is unauthorized.', { status: 401 });
+        return new Response('User is unauthorized.', { status: 403 });
     }
 
     if (
@@ -54,11 +56,18 @@ Deno.serve(async (req: Request) => {
         return new Response('Permission Denied', { status: 403 });
     }
 
-    const bodyJson = await req.json();
+    const bodyJson = await readJson(req);
+    if (!bodyJson) {
+        return new Response('Invalid JSON body.', { status: 400 });
+    }
 
     const body: BodyType = {
         message_id: bodyJson.message_id,
     };
+
+    if (!body.message_id) {
+        return new Response('No message id provided.', { status: 400 });
+    }
 
     const { data: messageData, error: messageDataError } = await supabaseClient
         .from('valentinesmessages')
@@ -68,7 +77,7 @@ Deno.serve(async (req: Request) => {
 
     if (messageDataError) {
         return new Response('Failed to fetch message', {
-            status: 500,
+            status: dbErrorStatus(messageDataError),
         });
     }
 

@@ -3,6 +3,7 @@ import { sendOrgEmail } from '../_shared/utils.ts';
 import corsHeaders from '../_shared/cors.ts';
 import { datetime } from 'https://deno.land/x/ptera/mod.ts';
 import { footer } from '../_shared/strings.ts';
+import { dbErrorStatus, readJson } from '../_shared/http.ts';
 
 type BodyType = {
     room_id: number;
@@ -27,6 +28,11 @@ Deno.serve(async (req: Request) => {
         return new Response('ok', { headers: corsHeaders });
     }
 
+    const bodyJson = await readJson(req);
+    if (!bodyJson) {
+        return new Response('Invalid JSON body.', { status: 400 });
+    }
+
     const {
         room_id,
         name,
@@ -35,7 +41,7 @@ Deno.serve(async (req: Request) => {
         comments,
         available_days,
         ais_days,
-    }: BodyType = await req.json();
+    }: BodyType = bodyJson;
 
     /* floor 0 is a real floor, so only a missing floor is an error */
     if (!room_id || !available_days || floor == null || !name) {
@@ -49,13 +55,13 @@ Deno.serve(async (req: Request) => {
         { global: { headers: { Authorization: authHeader } } },
     );
 
-    const jwt = authHeader.split(' ')[1];
+    const jwt = authHeader?.split(' ')[1];
     const { data: userData } = await supabaseClient.auth.getUser(jwt);
     const user = userData.user;
 
     /* Failed to fetch supabase user */
     if (!user) {
-        return new Response('Failed to fetch user.', { status: 500 });
+        return new Response('Failed to fetch user.', { status: 401 });
     }
 
     /* check if user is a verified user. Verified user = the userdata that the site uses */
@@ -91,7 +97,9 @@ Deno.serve(async (req: Request) => {
         .select('id');
 
     if (roomUpdateError) {
-        return new Response('Failed to update room.', { status: 500 });
+        return new Response('Failed to update room.', {
+            status: dbErrorStatus(roomUpdateError),
+        });
     }
 
     if (!updatedRooms || !updatedRooms.length) {

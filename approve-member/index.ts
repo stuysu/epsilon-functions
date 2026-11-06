@@ -7,6 +7,7 @@ import {
     sendOrgEmail,
 } from '../_shared/utils.ts';
 import { footer } from '../_shared/strings.ts';
+import { readJson } from '../_shared/http.ts';
 
 type BodyType = {
     member_id: number;
@@ -17,9 +18,14 @@ Deno.serve(async (req: Request) => {
         return new Response('ok', { headers: corsHeaders });
     }
 
+    const bodyJson = await readJson(req);
+    if (!bodyJson) {
+        return new Response('Invalid JSON body.', { status: 400 });
+    }
+
     const {
         member_id,
-    }: BodyType = await req.json();
+    }: BodyType = bodyJson;
 
     if (!member_id) {
         return new Response('Missing field', { status: 400 });
@@ -32,13 +38,13 @@ Deno.serve(async (req: Request) => {
         { global: { headers: { Authorization: authHeader } } },
     );
 
-    const jwt = authHeader.split(' ')[1];
+    const jwt = authHeader?.split(' ')[1];
     const { data: userData } = await supabaseClient.auth.getUser(jwt);
     const user = userData.user;
 
     /* Failed to fetch supabase user */
     if (!user) {
-        return new Response('Failed to fetch user.', { status: 500 });
+        return new Response('Failed to fetch user.', { status: 401 });
     }
 
     /* check if user is a verified user. Verified user = the userdata that the site uses */

@@ -9,6 +9,7 @@ import {
     sendOrgEmail,
 } from '../_shared/utils.ts';
 import { footer } from '../_shared/strings.ts';
+import { dbErrorStatus, readJson } from '../_shared/http.ts';
 
 // import { createCalendarEvent } from '../_shared/google/calendar.ts'; doesn't work
 
@@ -52,13 +53,13 @@ Deno.serve(async (req: Request) => {
         { global: { headers: { Authorization: authHeader } } },
     );
 
-    const jwt = authHeader.split(' ')[1];
+    const jwt = authHeader?.split(' ')[1];
     const { data: userData } = await supabaseClient.auth.getUser(jwt);
     const user = userData.user;
 
     /* Failed to fetch supabase user */
     if (!user) {
-        return new Response('Failed to fetch user.', { status: 500 });
+        return new Response('Failed to fetch user.', { status: 401 });
     }
 
     /* check if user is a verified user. Verified user = the userdata that the site uses */
@@ -77,7 +78,10 @@ Deno.serve(async (req: Request) => {
         return new Response('User is unauthorized.', { status: 401 });
     }
 
-    const bodyJson = await req.json();
+    const bodyJson = await readJson(req);
+    if (!bodyJson) {
+        return new Response('Invalid JSON body.', { status: 400 });
+    }
     const advisor = bodyJson.advisor?.trim() || null;
     const body: BodyType = {
         organization_id: bodyJson.organization_id,
@@ -90,6 +94,10 @@ Deno.serve(async (req: Request) => {
         notify_faculty: bodyJson.notify_faculty,
         advisor: advisor,
     };
+
+    if (!body.organization_id || !body.title) {
+        return new Response('Missing field', { status: 400 });
+    }
 
     /* time (+ room) validation */
     const validationError = await isValidMeeting(
@@ -142,7 +150,9 @@ Deno.serve(async (req: Request) => {
             .returns<rtyp[]>();
 
     if (createMeetingError || !createMeetingData || !createMeetingData.length) {
-        return new Response('Could not create meeting.', { status: 500 });
+        return new Response('Could not create meeting.', {
+            status: dbErrorStatus(createMeetingError),
+        });
     }
 
     /* send out emails */

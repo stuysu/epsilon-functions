@@ -1,6 +1,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import corsHeaders from '../_shared/cors.ts';
 import { sendOrgEmail } from '../_shared/utils.ts';
+import { dbErrorStatus, readJson } from '../_shared/http.ts';
 
 type BodyType = {
     organization_id: number;
@@ -20,13 +21,13 @@ Deno.serve(async (req: Request) => {
         { global: { headers: { Authorization: authHeader } } },
     );
 
-    const jwt = authHeader.split(' ')[1];
+    const jwt = authHeader?.split(' ')[1];
     const { data: userData } = await supabaseClient.auth.getUser(jwt);
     const user = userData.user;
 
     /* Failed to fetch supabase user */
     if (!user) {
-        return new Response('Failed to fetch user.', { status: 500 });
+        return new Response('Failed to fetch user.', { status: 401 });
     }
 
     /* check if user is a verified user. Verified user = the userdata that the site uses */
@@ -45,12 +46,19 @@ Deno.serve(async (req: Request) => {
         return new Response('User is unauthorized.', { status: 401 });
     }
 
-    const bodyJson = await req.json();
+    const bodyJson = await readJson(req);
+    if (!bodyJson) {
+        return new Response('Invalid JSON body.', { status: 400 });
+    }
     const body: BodyType = {
         organization_id: bodyJson.organization_id,
         title: bodyJson.title,
         description: bodyJson.description,
     };
+
+    if (!body.organization_id || !body.title || !body.description) {
+        return new Response('Missing field', { status: 400 });
+    }
 
     /* create post */
     const { data: postData, error: postError } = await supabaseClient.from(
@@ -60,7 +68,9 @@ Deno.serve(async (req: Request) => {
         .select();
 
     if (postError || !postData || !postData.length) {
-        return new Response('Error creating post.', { status: 500 });
+        return new Response('Error creating post.', {
+            status: dbErrorStatus(postError),
+        });
     }
 
     /* email all members of organization */

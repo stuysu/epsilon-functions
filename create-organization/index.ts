@@ -2,6 +2,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import corsHeaders from '../_shared/cors.ts';
 import supabaseAdmin from '../_shared/supabaseAdmin.ts';
 import { cleanCharter, validateCharter } from '../_shared/charter.ts';
+import { dbErrorStatus, readJson } from '../_shared/http.ts';
 
 type BodyType = {
     name: string;
@@ -84,13 +85,13 @@ Deno.serve(async (req: Request) => {
         }
     }
 
-    const jwt = authHeader.split(' ')[1];
+    const jwt = authHeader?.split(' ')[1];
     const { data: userData } = await supabaseClient.auth.getUser(jwt);
     const user = userData.user;
 
     /* Failed to fetch supabase user */
     if (!user) {
-        return new Response('Failed to fetch user.', { status: 500 });
+        return new Response('Failed to fetch user.', { status: 401 });
     }
 
     /* check if user is a verified user. Verified user = the userdata that the site uses */
@@ -110,7 +111,11 @@ Deno.serve(async (req: Request) => {
     }
 
     const siteUser = verifiedUsers[0];
-    const body: BodyType = cleanCharter(await req.json());
+    const bodyJson = await readJson(req);
+    if (!bodyJson) {
+        return new Response('Invalid JSON body.', { status: 400 });
+    }
+    const body: BodyType = cleanCharter(bodyJson);
 
     const problems = validateCharter(body, true);
     if (problems.length) {
@@ -157,7 +162,7 @@ Deno.serve(async (req: Request) => {
             `Error creating organization. \`${(orgCreateError?.message ||
                 orgCreateError?.code ||
                 'Unknown error. Contact it@stuysu.org.')}\``,
-            { status: 500 },
+            { status: dbErrorStatus(orgCreateError) },
         );
     }
 
