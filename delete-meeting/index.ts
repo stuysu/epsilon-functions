@@ -1,6 +1,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import corsHeaders from '../_shared/cors.ts';
-import { sendOrgEmail } from '../_shared/utils.ts';
+import { isSiteAdmin, sendOrgEmail } from '../_shared/utils.ts';
+import supabaseAdmin from '../_shared/supabaseAdmin.ts';
 
 import { datetime } from 'https://deno.land/x/ptera/mod.ts';
 import { footer } from '../_shared/strings.ts';
@@ -9,12 +10,15 @@ type BodyType = {
     id: number;
 };
 
+const isId = (v: unknown): v is number =>
+    Number.isInteger(v) && (v as number) > 0;
+
 Deno.serve(async (req: Request) => {
     if (req.method === 'OPTIONS') {
         return new Response('ok', { headers: corsHeaders });
     }
 
-    const authHeader = req.headers.get('Authorization')!;
+    const authHeader = req.headers.get('Authorization') ?? '';
     const supabaseClient = createClient(
         Deno.env.get('SUPABASE_URL') ?? '',
         Deno.env.get('SUPABASE_ANON_KEY') ?? '',
@@ -23,11 +27,11 @@ Deno.serve(async (req: Request) => {
 
     const jwt = authHeader.split(' ')[1];
     const { data: userData } = await supabaseClient.auth.getUser(jwt);
-    const user = userData.user;
+    const user = userData?.user;
 
     /* Failed to fetch supabase user */
     if (!user) {
-        return new Response('Failed to fetch user.', { status: 500 });
+        return new Response('Failed to fetch user.', { status: 401 });
     }
 
     /* check if user is a verified user. Verified user = the userdata that the site uses */
@@ -46,7 +50,10 @@ Deno.serve(async (req: Request) => {
         return new Response('User is unauthorized.', { status: 401 });
     }
 
-    const bodyJson = await req.json();
+    const bodyJson = await req.json().catch(() => null);
+    if (!bodyJson || typeof bodyJson !== 'object' || !isId(bodyJson.id)) {
+        return new Response('Missing or invalid field: id', { status: 400 });
+    }
     const body: BodyType = {
         id: bodyJson.id,
     };
@@ -62,19 +69,46 @@ Deno.serve(async (req: Request) => {
             `)
             .eq('id', body.id);
 
-    if (oldMeetingError || !oldMeetingData || !oldMeetingData.length) {
+    if (oldMeetingError) {
         return new Response('Error fetching old meeting data.', {
             status: 500,
         });
     }
 
+    if (!oldMeetingData || !oldMeetingData.length) {
+        return new Response('Meeting not found.', { status: 404 });
+    }
+
+    /* only org ADMIN/CREATOR or site ADMIN may delete (mirrors RLS) */
+    const { data: orgAdminRows, error: orgAdminError } = await supabaseAdmin
+        .from('memberships')
+        .select('id, users!inner ( email )')
+        .eq('organization_id', oldMeetingData[0].organization_id)
+        .eq('users.email', user.email)
+        .in('role', ['ADMIN', 'CREATOR'])
+        .limit(1);
+
+    if (orgAdminError) {
+        return new Response('Error checking permissions.', { status: 500 });
+    }
+
+    if (!orgAdminRows?.length && !(await isSiteAdmin(user.email))) {
+        return new Response('Permission denied.', { status: 403 });
+    }
+
     /* attempt to delete meeting and notify members */
-    const { error: deleteMeetingError } = await supabaseClient.from('meetings')
-        .delete()
-        .eq('id', body.id);
+    const { data: deletedMeetings, error: deleteMeetingError } =
+        await supabaseClient.from('meetings')
+            .delete()
+            .eq('id', body.id)
+            .select('id');
 
     if (deleteMeetingError) {
         return new Response('Error deleting meeting.', { status: 500 });
+    }
+
+    if (!deletedMeetings || !deletedMeetings.length) {
+        return new Response('Permission denied.', { status: 403 });
     }
 
     /* notify members */
