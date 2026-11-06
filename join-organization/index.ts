@@ -1,13 +1,13 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { sendOrgEmail } from '../_shared/utils.ts';
-import corsHeaders from '../_shared/cors.ts';
+import corsHeaders, { withCors } from '../_shared/cors.ts';
 import { footer } from '../_shared/strings.ts';
 
 type BodyType = {
     organization_id: number;
 };
 
-Deno.serve(async (req: Request) => {
+Deno.serve(withCors(async (req: Request) => {
     if (req.method === 'OPTIONS') {
         return new Response('ok', { headers: corsHeaders });
     }
@@ -62,12 +62,26 @@ Deno.serve(async (req: Request) => {
         .select(`
             id,
             name,
-            url
+            url,
+            state,
+            joinable
         `)
         .eq('id', organization_id);
 
     if (orgExistsError || !orgData || !orgData[0]) {
         return new Response('Organization does not exist.', { status: 404 }); // org not found 404
+    }
+
+    /* org must be approved, not punished, and open to join requests */
+    if (['PENDING', 'PUNISHED'].includes(orgData[0].state)) {
+        return new Response('This organization cannot be joined right now.', {
+            status: 403,
+        });
+    }
+    if (!orgData[0].joinable) {
+        return new Response('This organization is not joinable.', {
+            status: 403,
+        });
     }
 
     /* attempt to join organization (table constraint prevents duplicate members already) */
@@ -139,4 +153,4 @@ This email is to let you know that ${siteUser.first_name} ${siteUser.last_name} 
             headers: { 'Content-Type': 'application/json' },
         },
     );
-});
+}));

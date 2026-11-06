@@ -1,5 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import corsHeaders from '../_shared/cors.ts';
+import corsHeaders, { withCors } from '../_shared/cors.ts';
 import { roomRequiresAdvisor, sendOrgEmail } from '../_shared/utils.ts';
 
 import { datetime } from 'https://deno.land/x/ptera/mod.ts';
@@ -39,7 +39,7 @@ const returnSelect = `
             )
         `;
 
-Deno.serve(async (req: Request) => {
+Deno.serve(withCors(async (req: Request) => {
     if (req.method === 'OPTIONS') {
         return new Response('ok', { headers: corsHeaders });
     }
@@ -237,4 +237,4 @@ Advisor: ${updateMeetingData[0].advisor || 'None'}` + footer;
             headers: { 'Content-Type': 'application/json' },
         },
     );
-});
+}));

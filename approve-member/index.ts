@@ -1,5 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import corsHeaders from '../_shared/cors.ts';
+import corsHeaders, { withCors } from '../_shared/cors.ts';
 import supabaseAdmin from '../_shared/supabaseAdmin.ts';
 import {
     fetchMemberRequirement,
@@ -12,7 +12,7 @@ type BodyType = {
     member_id: number;
 };
 
-Deno.serve(async (req: Request) => {
+Deno.serve(withCors(async (req: Request) => {
     if (req.method === 'OPTIONS') {
         return new Response('ok', { headers: corsHeaders });
     }
@@ -147,4 +147,4 @@ We hope you enjoy your club experience at Stuy!` + footer;
             headers: { 'Content-Type': 'application/json' },
         },
     );
-});
+}));

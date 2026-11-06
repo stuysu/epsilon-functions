@@ -1,5 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import corsHeaders from '../_shared/cors.ts';
+import corsHeaders, { withCors } from '../_shared/cors.ts';
 
 type BodyType = {
     first_name: string;
@@ -9,7 +9,7 @@ type BodyType = {
     is_faculty: boolean;
 };
 
-Deno.serve(async (req: Request) => {
+Deno.serve(withCors(async (req: Request) => {
     if (req.method === 'OPTIONS') {
         return new Response('ok', { headers: corsHeaders });
     }
@@ -72,4 +72,4 @@ Deno.serve(async (req: Request) => {
             headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         },
     );
-});
+}));

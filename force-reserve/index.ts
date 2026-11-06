@@ -1,6 +1,6 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { sendOrgEmail } from '../_shared/utils.ts';
-import corsHeaders from '../_shared/cors.ts';
+import corsHeaders, { withCors } from '../_shared/cors.ts';
 import { datetime } from 'https://deno.land/x/ptera/mod.ts';
 import { footer } from '../_shared/strings.ts';
 
@@ -12,7 +12,7 @@ type BodyType = {
     title?: string;
 };
 
-Deno.serve(async (req: Request) => {
+Deno.serve(withCors(async (req: Request) => {
     if (req.method === 'OPTIONS') {
         return new Response('ok', { headers: corsHeaders });
     }
@@ -262,4 +262,4 @@ We sincerely apologize for the inconvenience.` + footer;
             headers: { 'Content-Type': 'application/json' },
         },
     );
-});
+}));

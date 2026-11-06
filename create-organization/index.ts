@@ -1,5 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import corsHeaders from '../_shared/cors.ts';
+import corsHeaders, { withCors } from '../_shared/cors.ts';
 import supabaseAdmin from '../_shared/supabaseAdmin.ts';
 import { cleanCharter, validateCharter } from '../_shared/charter.ts';
 
@@ -42,7 +42,7 @@ const RESERVED_PATHS = [
 ];
 
 /* accepts JSON */
-Deno.serve(async (req: Request) => {
+Deno.serve(withCors(async (req: Request) => {
     if (req.method === 'OPTIONS') {
         return new Response('ok', { headers: corsHeaders });
     }
@@ -64,7 +64,8 @@ Deno.serve(async (req: Request) => {
         .single()
         .returns<styp>();
     if (data?.setting_value) {
-        const deadline = new Date(data.setting_value);
+        // setting_value is a unix timestamp in seconds (like valentines_deadline)
+        const deadline = new Date(data.setting_value * 1000);
         if (new Date() > deadline) {
             return new Response(
                 `Chartering for this year has been disabled as of ${deadline.toLocaleString()}.`,
@@ -175,4 +176,4 @@ Deno.serve(async (req: Request) => {
             headers: { 'Content-Type': 'application/json' },
         },
     );
-});
+}));

@@ -1,6 +1,6 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { fetchMemberRequirement, sendOrgEmail } from '../_shared/utils.ts';
-import corsHeaders from '../_shared/cors.ts';
+import corsHeaders, { withCors } from '../_shared/cors.ts';
 import { footer } from '../_shared/strings.ts';
 
 // import { initOrgCalendar } from '../_shared/google/calendar.ts'; REMOVE FOR NOW: DOESN'T WORK IN PRODUCTION
@@ -9,7 +9,7 @@ type BodyType = {
     organization_id: number;
 };
 
-Deno.serve(async (req: Request) => {
+Deno.serve(withCors(async (req: Request) => {
     if (req.method === 'OPTIONS') {
         return new Response('ok', { headers: corsHeaders });
     }
@@ -119,4 +119,4 @@ ${
             headers: { 'Content-Type': 'application/json' },
         },
     );
-});
+}));
