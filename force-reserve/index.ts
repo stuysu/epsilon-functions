@@ -85,7 +85,7 @@ Deno.serve(withCors(async (req: Request) => {
 
     const { data: organization, error: orgFetchError } = await supabaseAdmin
         .from('organizations')
-        .select('id')
+        .select('id, state')
         .eq('id', organization_id)
         .maybeSingle();
     if (orgFetchError) {
@@ -93,6 +93,13 @@ Deno.serve(withCors(async (req: Request) => {
     }
     if (!organization) {
         return new Response('Organization not found.', { status: 404 });
+    }
+    /* a charter still under review isn't a club yet, so it can't take a room */
+    if (organization.state === 'PENDING') {
+        return new Response(
+            'This organization is still pending approval.',
+            { status: 409 },
+        );
     }
 
     /*
