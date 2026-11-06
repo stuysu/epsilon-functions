@@ -143,6 +143,7 @@ Deno.serve(withCors(async (req: Request) => {
                 .select('id')
                 .eq('organization_id', organizationId)
                 .eq('user_id', verifiedUsers[0].id)
+                .eq('active', true)
                 .in('role', ['ADMIN', 'CREATOR'])
                 .limit(1);
         if (membershipError) {

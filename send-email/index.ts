@@ -168,6 +168,7 @@ Deno.serve(withCors(async (req: Request) => {
                 organization_id
             `)
             .eq('user_id', siteUser.id)
+            .eq('active', true)
             .in('role', ['ADMIN', 'CREATOR']);
 
         if (adminOrgsError) {

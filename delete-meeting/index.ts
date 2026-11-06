@@ -85,6 +85,7 @@ Deno.serve(withCors(async (req: Request) => {
         .select('id, users!inner ( email )')
         .eq('organization_id', oldMeetingData[0].organization_id)
         .eq('users.email', user.email)
+        .eq('active', true)
         .in('role', ['ADMIN', 'CREATOR'])
         .limit(1);
 

@@ -121,20 +121,29 @@ Deno.serve(withCors(async (req: Request) => {
         .from('organizations')
         .delete()
         .eq('id', organization_id)
+        .eq('state', 'PENDING')
         .select('id');
 
-    if (rejectError || !rejectedOrgs || !rejectedOrgs.length) {
+    if (rejectError) {
         return new Response('Failed to reject organization.', { status: 500 });
+    }
+
+    /* someone approved it between the check above and this delete */
+    if (!rejectedOrgs || !rejectedOrgs.length) {
+        return new Response('Only pending organizations can be rejected.', {
+            status: 409,
+        });
     }
 
     /* email admins */
 
+    /* the organization is already deleted, so report success even if the
+       admins can't be emailed */
     if (orgAdminError || !orgAdmins || !orgAdmins.length) {
         console.log('Unable to email org admins.');
-        return new Response('Failed to email org admins.', { status: 500 });
     }
 
-    for (const admin of orgAdmins) {
+    for (const admin of orgAdmins ?? []) {
         const emailBody = `Hi ${admin.users.first_name}!
 
 Your charter for ${rejectedOrgName} has been rejected.` + footer;
