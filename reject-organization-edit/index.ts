@@ -1,6 +1,6 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { isSiteAdmin, sendOrgEmail } from '../_shared/utils.ts';
-import corsHeaders from '../_shared/cors.ts';
+import corsHeaders, { withCors } from '../_shared/cors.ts';
 import { footer } from '../_shared/strings.ts';
 
 type BodyType = {
@@ -11,7 +11,7 @@ type BodyType = {
 const isId = (v: unknown): v is number =>
     Number.isInteger(v) && (v as number) > 0;
 
-Deno.serve(async (req: Request) => {
+Deno.serve(withCors(async (req: Request) => {
     if (req.method === 'OPTIONS') {
         return new Response('ok', { headers: corsHeaders });
     }
@@ -121,4 +121,4 @@ For more information, please check your club admin panel's messages tab.` +
             headers: { 'Content-Type': 'application/json' },
         },
     );
-});
+}));

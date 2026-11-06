@@ -1,6 +1,6 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import Transport from '../_shared/emailTransport.ts';
-import corsHeaders from '../_shared/cors.ts';
+import corsHeaders, { withCors } from '../_shared/cors.ts';
 import { isSiteAdmin } from '../_shared/utils.ts';
 import { footer } from '../_shared/strings.ts';
 
@@ -11,7 +11,7 @@ type BodyType = {
 const isId = (v: unknown): v is number =>
     Number.isInteger(v) && (v as number) > 0;
 
-Deno.serve(async (req: Request) => {
+Deno.serve(withCors(async (req: Request) => {
     if (req.method === 'OPTIONS') {
         return new Response('ok', { headers: corsHeaders });
     }
@@ -61,13 +61,15 @@ Deno.serve(async (req: Request) => {
 
     type orgTyp = {
         name: string;
+        state: string;
     };
 
     const { data: orgData, error: orgFetchError } = await supabaseClient.from(
         'organizations',
     )
         .select(`
-            name
+            name,
+            state
         `)
         .eq('id', organization_id)
         .returns<orgTyp[]>();
@@ -78,6 +80,14 @@ Deno.serve(async (req: Request) => {
 
     if (!orgData || !orgData.length) {
         return new Response('Organization not found.', { status: 404 });
+    }
+
+    // only charters still awaiting review can be rejected; rejecting deletes
+    // the organization, so an approved club must not go through here
+    if (orgData[0].state !== 'PENDING') {
+        return new Response('Only pending organizations can be rejected.', {
+            status: 409,
+        });
     }
 
     const rejectedOrgName = orgData[0].name;
@@ -152,4 +162,4 @@ Your charter for ${rejectedOrgName} has been rejected.` + footer;
             headers: { 'Content-Type': 'application/json' },
         },
     );
-});
+}));

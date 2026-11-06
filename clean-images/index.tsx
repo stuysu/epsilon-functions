@@ -1,7 +1,7 @@
-import corsHeaders from '../_shared/cors.ts';
+import corsHeaders, { withCors } from '../_shared/cors.ts';
 import supabaseAdmin from '../_shared/supabaseAdmin.ts';
 
-Deno.serve(async (req: Request) => {
+Deno.serve(withCors(async (req: Request) => {
     if (req.method === 'OPTIONS') {
         return new Response('ok', { headers: corsHeaders });
     }
@@ -107,4 +107,4 @@ Deno.serve(async (req: Request) => {
             headers: { 'Content-Type': 'application/json' },
         },
     );
-});
+}));

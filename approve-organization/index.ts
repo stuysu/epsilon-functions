@@ -4,7 +4,7 @@ import {
     isSiteAdmin,
     sendOrgEmail,
 } from '../_shared/utils.ts';
-import corsHeaders from '../_shared/cors.ts';
+import corsHeaders, { withCors } from '../_shared/cors.ts';
 import { footer } from '../_shared/strings.ts';
 
 // import { initOrgCalendar } from '../_shared/google/calendar.ts'; REMOVE FOR NOW: DOESN'T WORK IN PRODUCTION
@@ -16,7 +16,7 @@ type BodyType = {
 const isId = (v: unknown): v is number =>
     Number.isInteger(v) && (v as number) > 0;
 
-Deno.serve(async (req: Request) => {
+Deno.serve(withCors(async (req: Request) => {
     if (req.method === 'OPTIONS') {
         return new Response('ok', { headers: corsHeaders });
     }
@@ -156,4 +156,4 @@ ${
             headers: { 'Content-Type': 'application/json' },
         },
     );
-});
+}));
