@@ -109,10 +109,12 @@ Content: ${messageData.message || '[empty message]'}
 
 You may submit a new message if desired.` + footer;
         /* delete first so the sender is only told once it's really gone */
-        const { error: messageDeleteError } = await supabaseClient
-            .from('valentinesmessages')
-            .delete()
-            .eq('id', body.message_id);
+        const { data: deletedMessages, error: messageDeleteError } =
+            await supabaseClient
+                .from('valentinesmessages')
+                .delete()
+                .eq('id', body.message_id)
+                .select('id');
 
         if (messageDeleteError) {
             return new Response('Failed to delete message', {
@@ -120,12 +122,25 @@ You may submit a new message if desired.` + footer;
             });
         }
 
-        await Transport.sendMail({
-            from: Deno.env.get('NODEMAILER_FROM')!,
-            to: sender.email,
-            subject: '[Epsilon Valentines] Message Removed',
-            text,
-        });
+        if (!deletedMessages || !deletedMessages.length) {
+            return new Response('Message not found.', { status: 404 });
+        }
+
+        /* the message is already gone, so a mail failure must not turn this
+           into an error the moderator would retry */
+        try {
+            await Transport.sendMail({
+                from: Deno.env.get('NODEMAILER_FROM')!,
+                to: sender.email,
+                subject: '[Epsilon Valentines] Message Removed',
+                text,
+            });
+        } catch (error) {
+            console.error(
+                'Failed to email sender:',
+                error instanceof Error ? error.message : error,
+            );
+        }
 
         return new Response(
             JSON.stringify({}),

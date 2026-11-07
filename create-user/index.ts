@@ -25,10 +25,13 @@ Deno.serve(withCors(async (req: Request) => {
     const jwt = authHeader?.split(' ')[1];
     const { data: authData } = await supabaseClient.auth.getUser(jwt);
     if (!authData.user) {
-        return new Response(JSON.stringify({ error: 'Failed to fetch user.' }), {
-            status: 401,
-            headers: corsHeaders,
-        });
+        return new Response(
+            JSON.stringify({ error: 'Failed to fetch user.' }),
+            {
+                status: 401,
+                headers: corsHeaders,
+            },
+        );
     }
 
     const bodyJson = await readJson(req);
