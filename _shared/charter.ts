@@ -88,6 +88,29 @@ const isWebLink = (value: string) => {
     }
 };
 
+/* the organization columns a charter edit may change (the organizationedits
+   columns); anything else, like state or joinable, is never approved through
+   an edit */
+export const EDITABLE_CHARTER_FIELDS = [
+    'name',
+    'url',
+    'socials',
+    'picture',
+    'mission',
+    'purpose',
+    'appointment_procedures',
+    'uniqueness',
+    'meeting_schedule',
+    'meeting_days',
+    'tags',
+    'commitment_level',
+    'keywords',
+    'goals',
+    'meeting_description',
+    'fair',
+    'faculty_email',
+];
+
 const countWords = (value: string) =>
     value.trim() ? value.trim().split(/\s+/).length : 0;
 
@@ -226,3 +249,31 @@ export const validateCharter = (
 
     return problems;
 };
+
+/* the site's own paths, which a club URL would hide or be hidden behind */
+export const RESERVED_PATHS = [
+    'catalog',
+    'create',
+    'about',
+    'meetings',
+    'rules',
+    'archive',
+    'modules',
+    'admin',
+    'attendance',
+    'opportunities',
+    'valentines',
+    'today',
+    'announcements',
+    // the site's own top-level pages, which a club URL would be hidden behind
+    'stuyactivities',
+    'charter',
+    'archives',
+    'activities-support',
+    'arista-landing',
+    'confirm-join',
+    'communications',
+    'preferences',
+    'profile',
+    'vote',
+];

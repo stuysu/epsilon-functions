@@ -1,21 +1,27 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { sendOrgEmail } from '../_shared/utils.ts';
-import corsHeaders from '../_shared/cors.ts';
+import corsHeaders, { withCors } from '../_shared/cors.ts';
 import { datetime } from 'https://deno.land/x/ptera/mod.ts';
 import { footer } from '../_shared/strings.ts';
+import { dbErrorStatus, readJson } from '../_shared/http.ts';
 
 type BodyType = {
     room_id: number;
 };
 
-Deno.serve(async (req: Request) => {
+Deno.serve(withCors(async (req: Request) => {
     if (req.method === 'OPTIONS') {
         return new Response('ok', { headers: corsHeaders });
     }
 
+    const bodyJson = await readJson(req);
+    if (!bodyJson) {
+        return new Response('Invalid JSON body.', { status: 400 });
+    }
+
     const {
         room_id,
-    }: BodyType = await req.json();
+    }: BodyType = bodyJson;
 
     if (!room_id) {
         return new Response('Missing field', { status: 400 });
@@ -28,13 +34,13 @@ Deno.serve(async (req: Request) => {
         { global: { headers: { Authorization: authHeader } } },
     );
 
-    const jwt = authHeader.split(' ')[1];
+    const jwt = authHeader?.split(' ')[1];
     const { data: userData } = await supabaseClient.auth.getUser(jwt);
     const user = userData.user;
 
     /* Failed to fetch supabase user */
     if (!user) {
-        return new Response('Failed to fetch user.', { status: 500 });
+        return new Response('Failed to fetch user.', { status: 401 });
     }
 
     /* check if user is a verified user. Verified user = the userdata that the site uses */
@@ -63,7 +69,9 @@ Deno.serve(async (req: Request) => {
         .single();
 
     if (roomFetchError || !room) {
-        return new Response('Failed to fetch room.', { status: 500 });
+        return new Response('Failed to fetch room.', {
+            status: dbErrorStatus(roomFetchError),
+        });
     }
 
     const { data: permitted, error: permittedError } = await supabaseClient
@@ -161,4 +169,4 @@ We sincerely apologize for the inconvenience.` +
             headers: { 'Content-Type': 'application/json' },
         },
     );
-});
+}));

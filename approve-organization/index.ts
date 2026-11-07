@@ -1,6 +1,10 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import { fetchMemberRequirement, sendOrgEmail } from '../_shared/utils.ts';
-import corsHeaders from '../_shared/cors.ts';
+import {
+    fetchMemberRequirement,
+    isSiteAdmin,
+    sendOrgEmail,
+} from '../_shared/utils.ts';
+import corsHeaders, { withCors } from '../_shared/cors.ts';
 import { footer } from '../_shared/strings.ts';
 
 // import { initOrgCalendar } from '../_shared/google/calendar.ts'; REMOVE FOR NOW: DOESN'T WORK IN PRODUCTION
@@ -9,20 +13,22 @@ type BodyType = {
     organization_id: number;
 };
 
-Deno.serve(async (req: Request) => {
+const isId = (v: unknown): v is number =>
+    Number.isInteger(v) && (v as number) > 0;
+
+Deno.serve(withCors(async (req: Request) => {
     if (req.method === 'OPTIONS') {
         return new Response('ok', { headers: corsHeaders });
     }
 
-    const {
-        organization_id,
-    }: BodyType = await req.json();
+    const reqBody: BodyType | null = await req.json().catch(() => null);
+    const organization_id = reqBody?.organization_id;
 
-    if (!organization_id) {
+    if (!isId(organization_id)) {
         return new Response('Missing field', { status: 400 });
     }
 
-    const authHeader = req.headers.get('Authorization')!;
+    const authHeader = req.headers.get('Authorization') ?? '';
     const supabaseClient = createClient(
         Deno.env.get('SUPABASE_URL') ?? '',
         Deno.env.get('SUPABASE_ANON_KEY') ?? '',
@@ -31,13 +37,13 @@ Deno.serve(async (req: Request) => {
 
     const jwt = authHeader.split(' ')[1];
     const { data: userData } = await supabaseClient.auth.getUser(jwt);
-    const user = userData.user;
+    const user = userData?.user;
 
     const required_members = await fetchMemberRequirement();
 
     /* Failed to fetch supabase user */
     if (!user) {
-        return new Response('Failed to fetch user.', { status: 500 });
+        return new Response('Failed to fetch user.', { status: 401 });
     }
 
     /* check if user is a verified user. Verified user = the userdata that the site uses */
@@ -54,6 +60,30 @@ Deno.serve(async (req: Request) => {
 
     if (!verifiedUsers || !verifiedUsers.length) {
         return new Response('User is unauthorized.', { status: 401 });
+    }
+
+    if (!(await isSiteAdmin(user.email))) {
+        return new Response('Permission denied.', { status: 403 });
+    }
+
+    const { data: currentOrg, error: currentOrgError } = await supabaseClient
+        .from('organizations')
+        .select('state')
+        .eq('id', organization_id)
+        .maybeSingle();
+
+    if (currentOrgError) {
+        return new Response('Failed to approve organization.', { status: 500 });
+    }
+
+    if (!currentOrg) {
+        return new Response('Organization not found.', { status: 404 });
+    }
+
+    if (currentOrg.state !== 'PENDING') {
+        return new Response('Organization is not pending approval.', {
+            status: 409,
+        });
     }
 
     type orgTyp = {
@@ -73,6 +103,7 @@ Deno.serve(async (req: Request) => {
             state: org_members >= required_members ? 'UNLOCKED' : 'LOCKED',
         })
         .eq('id', organization_id)
+        .eq('state', 'PENDING')
         .select(`
             name
         `)
@@ -80,6 +111,12 @@ Deno.serve(async (req: Request) => {
 
     if (approveError) {
         return new Response('Failed to approve organization.', { status: 500 });
+    }
+
+    if (!orgData || !orgData.length) {
+        return new Response('Organization is not pending approval.', {
+            status: 409,
+        });
     }
 
     const approvedOrgName = orgData[0].name;
@@ -119,4 +156,4 @@ ${
             headers: { 'Content-Type': 'application/json' },
         },
     );
-});
+}));

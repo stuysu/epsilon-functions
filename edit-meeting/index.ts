@@ -1,5 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import corsHeaders from '../_shared/cors.ts';
+import corsHeaders, { withCors } from '../_shared/cors.ts';
 import { roomRequiresAdvisor, sendOrgEmail } from '../_shared/utils.ts';
 
 import { datetime } from 'https://deno.land/x/ptera/mod.ts';
@@ -11,6 +11,7 @@ import {
     type PastPolicy,
 } from '../_shared/utils.ts';
 import { footer } from '../_shared/strings.ts';
+import supabaseAdmin from '../_shared/supabaseAdmin.ts';
 
 type BodyType = {
     title: string;
@@ -39,25 +40,28 @@ const returnSelect = `
             )
         `;
 
-Deno.serve(async (req: Request) => {
+Deno.serve(withCors(async (req: Request) => {
     if (req.method === 'OPTIONS') {
         return new Response('ok', { headers: corsHeaders });
     }
 
-    const authHeader = req.headers.get('Authorization')!;
+    const authHeader = req.headers.get('Authorization');
+    const jwt = authHeader?.split(' ')[1];
+    if (!authHeader || !jwt) {
+        return new Response('Not signed in.', { status: 401 });
+    }
     const supabaseClient = createClient(
         Deno.env.get('SUPABASE_URL') ?? '',
         Deno.env.get('SUPABASE_ANON_KEY') ?? '',
         { global: { headers: { Authorization: authHeader } } },
     );
 
-    const jwt = authHeader.split(' ')[1];
     const { data: userData } = await supabaseClient.auth.getUser(jwt);
-    const user = userData.user;
+    const user = userData?.user;
 
-    /* Failed to fetch supabase user */
+    /* no signed-in user (missing, expired or anon token) */
     if (!user) {
-        return new Response('Failed to fetch user.', { status: 500 });
+        return new Response('Not signed in.', { status: 401 });
     }
 
     /* check if user is a verified user. Verified user = the userdata that the site uses */
@@ -76,9 +80,32 @@ Deno.serve(async (req: Request) => {
         return new Response('User is unauthorized.', { status: 401 });
     }
 
-    const bodyJson = await req
-        .json(); /* bodyJson here also includes: notify-faculty and id <- meeting id */
+    /* bodyJson here also includes: notify-faculty and id <- meeting id */
+    let bodyJson;
+    try {
+        bodyJson = await req.json();
+    } catch {
+        return new Response('Invalid request body.', { status: 400 });
+    }
+    if (!bodyJson || typeof bodyJson !== 'object') {
+        return new Response('Invalid request body.', { status: 400 });
+    }
+    if (!Number.isInteger(bodyJson.id) || bodyJson.id <= 0) {
+        return new Response('Missing or invalid meeting id.', { status: 400 });
+    }
+    if (
+        bodyJson.advisor !== undefined && bodyJson.advisor !== null &&
+        typeof bodyJson.advisor !== 'string'
+    ) {
+        return new Response('Invalid advisor.', { status: 400 });
+    }
 
+    if (
+        bodyJson.room_id !== undefined && bodyJson.room_id !== null &&
+        !Number.isInteger(bodyJson.room_id)
+    ) {
+        return new Response('Invalid room.', { status: 400 });
+    }
     const advisorOmitted = bodyJson.advisor === undefined;
     const advisor = bodyJson.advisor?.trim() || null;
 
@@ -93,15 +120,50 @@ Deno.serve(async (req: Request) => {
     };
 
     const { data: existingMeeting } = await supabaseClient.from('meetings')
-        .select('start_time, end_time, advisor, room_id')
+        .select('start_time, end_time, advisor, room_id, organization_id')
         .eq('id', bodyJson.id)
-        .single();
+        .maybeSingle();
 
     if (!existingMeeting) {
         return new Response('Meeting not found.', { status: 404 });
     }
 
+    /* the meeting's org comes from the DB, never from the request body */
+    const organizationId: number = existingMeeting.organization_id;
+    if (
+        bodyJson.organization_id !== undefined &&
+        bodyJson.organization_id !== null &&
+        Number(bodyJson.organization_id) !== organizationId
+    ) {
+        return new Response(
+            'organization_id does not match the meeting.',
+            { status: 400 },
+        );
+    }
+
     const siteAdmin = await isSiteAdmin(user.email);
+    if (!siteAdmin) {
+        const { data: adminMembership, error: membershipError } =
+            await supabaseAdmin
+                .from('memberships')
+                .select('id')
+                .eq('organization_id', organizationId)
+                .eq('user_id', verifiedUsers[0].id)
+                .eq('active', true)
+                .in('role', ['ADMIN', 'CREATOR'])
+                .limit(1);
+        if (membershipError) {
+            return new Response('Failed to check permissions.', {
+                status: 500,
+            });
+        }
+        if (!adminMembership || !adminMembership.length) {
+            return new Response(
+                'You must be an admin of this organization to edit its meetings.',
+                { status: 403 },
+            );
+        }
+    }
     const now = new Date();
     if (!siteAdmin && new Date(existingMeeting.end_time) <= now) {
         return new Response(
@@ -121,12 +183,14 @@ Deno.serve(async (req: Request) => {
         pastPolicy = 'started';
     }
 
+    /* when the room isn't being changed, still check the meeting's current
+       room against the new times */
     const validationError = await isValidMeeting(
         body.start_time,
         body.end_time,
-        body.room_id,
+        body.room_id === undefined ? existingMeeting.room_id : body.room_id,
         bodyJson.id,
-        bodyJson.organization_id,
+        organizationId,
         pastPolicy,
     );
     if (validationError) {
@@ -237,4 +301,4 @@ Advisor: ${updateMeetingData[0].advisor || 'None'}` + footer;
             headers: { 'Content-Type': 'application/json' },
         },
     );
-});
+}));

@@ -1,5 +1,6 @@
+import { dbErrorStatus, readJson } from '../_shared/http.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import corsHeaders from '../_shared/cors.ts';
+import corsHeaders, { withCors } from '../_shared/cors.ts';
 
 type BodyType = {
     first_name: string;
@@ -9,7 +10,7 @@ type BodyType = {
     is_faculty: boolean;
 };
 
-Deno.serve(async (req: Request) => {
+Deno.serve(withCors(async (req: Request) => {
     if (req.method === 'OPTIONS') {
         return new Response('ok', { headers: corsHeaders });
     }
@@ -21,24 +22,76 @@ Deno.serve(async (req: Request) => {
         { global: { headers: { Authorization: authHeader } } },
     );
 
-    const bodyJson = await req.json();
+    const jwt = authHeader?.split(' ')[1];
+    const { data: authData } = await supabaseClient.auth.getUser(jwt);
+    if (!authData.user) {
+        return new Response(
+            JSON.stringify({ error: 'Failed to fetch user.' }),
+            {
+                status: 401,
+                headers: corsHeaders,
+            },
+        );
+    }
+
+    const bodyJson = await readJson(req);
+    if (!bodyJson) {
+        return new Response(JSON.stringify({ error: 'Invalid JSON body.' }), {
+            status: 400,
+            headers: corsHeaders,
+        });
+    }
+
+    /* auth emails are lowercase, and the site looks users up by them */
+    const email = typeof bodyJson.email === 'string'
+        ? bodyJson.email.trim().toLowerCase()
+        : '';
+    if (!email) {
+        return new Response(JSON.stringify({ error: 'Missing email.' }), {
+            status: 400,
+            headers: corsHeaders,
+        });
+    }
+
+    /* grad_year is optional, but has to be a year when given */
+    let grad_year: number | null = null;
+    if (bodyJson.grad_year != null && bodyJson.grad_year !== '') {
+        grad_year = Number(bodyJson.grad_year);
+        if (
+            !Number.isInteger(grad_year) || grad_year < 1900 ||
+            grad_year > 9999
+        ) {
+            return new Response(
+                JSON.stringify({ error: 'Invalid grad year.' }),
+                { status: 400, headers: corsHeaders },
+            );
+        }
+    }
+
     const body: BodyType = {
         first_name: bodyJson.first_name,
         last_name: bodyJson.last_name,
-        email: bodyJson.email,
-        grad_year: bodyJson.grad_year,
+        email,
+        grad_year,
         is_faculty: bodyJson.is_faculty,
     };
 
-    /** check if user already exists **/
+    /** check if user already exists (ignoring case, older rows may be mixed case) **/
 
     const { data: userData, error: userError } = await supabaseClient.from(
         'users',
     )
-        .select()
-        .eq('email', body.email);
+        .select('email')
+        .ilike('email', email.replace(/[\\%_]/g, '\\$&'));
 
-    if (userData && userData.length > 0) {
+    if (userError) {
+        return new Response(
+            JSON.stringify({ error: 'Error checking for existing user' }),
+            { status: dbErrorStatus(userError), headers: corsHeaders },
+        );
+    }
+
+    if (userData.some((u) => u.email.toLowerCase() === email)) {
         return new Response(JSON.stringify({ error: 'User already exists' }), {
             status: 400,
             headers: corsHeaders,
@@ -59,7 +112,10 @@ Deno.serve(async (req: Request) => {
                         details: createUserError?.details,
                     },
                 }),
-                { status: 500, headers: corsHeaders },
+                {
+                    status: dbErrorStatus(createUserError),
+                    headers: corsHeaders,
+                },
             );
         }
     }
@@ -72,4 +128,4 @@ Deno.serve(async (req: Request) => {
             headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         },
     );
-});
+}));

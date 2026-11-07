@@ -1,8 +1,14 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import { sendOrgEmail } from '../_shared/utils.ts';
-import corsHeaders from '../_shared/cors.ts';
+import { isSiteAdmin, sendOrgEmail } from '../_shared/utils.ts';
+import corsHeaders, { withCors } from '../_shared/cors.ts';
 import { footer } from '../_shared/strings.ts';
-import { cleanCharter, validateCharter } from '../_shared/charter.ts';
+import {
+    cleanCharter,
+    EDITABLE_CHARTER_FIELDS,
+    RESERVED_PATHS,
+    validateCharter,
+} from '../_shared/charter.ts';
+import { dbErrorStatus, readJson } from '../_shared/http.ts';
 
 type BodyType = {
     organization_id: number;
@@ -12,16 +18,21 @@ type BodyType = {
     edit_id: number;
 };
 
-Deno.serve(async (req: Request) => {
+Deno.serve(withCors(async (req: Request) => {
     if (req.method === 'OPTIONS') {
         return new Response('ok', { headers: corsHeaders });
+    }
+
+    const bodyJson = await readJson(req);
+    if (!bodyJson) {
+        return new Response('Invalid JSON body.', { status: 400 });
     }
 
     const {
         organization_id,
         updated_fields,
         edit_id,
-    }: BodyType = await req.json();
+    }: BodyType = bodyJson;
 
     if (!organization_id || !updated_fields || !edit_id) {
         return new Response('Missing field', { status: 400 });
@@ -34,13 +45,13 @@ Deno.serve(async (req: Request) => {
         { global: { headers: { Authorization: authHeader } } },
     );
 
-    const jwt = authHeader.split(' ')[1];
+    const jwt = authHeader?.split(' ')[1];
     const { data: userData } = await supabaseClient.auth.getUser(jwt);
     const user = userData.user;
 
     /* Failed to fetch supabase user */
     if (!user) {
-        return new Response('Failed to fetch user.', { status: 500 });
+        return new Response('Failed to fetch user.', { status: 401 });
     }
 
     /* check if user is a verified user. Verified user = the userdata that the site uses */
@@ -59,11 +70,57 @@ Deno.serve(async (req: Request) => {
         return new Response('User is unauthorized.', { status: 401 });
     }
 
+    /* only site admins review charter edits */
+    if (!(await isSiteAdmin(user.email))) {
+        return new Response('User is unauthorized.', { status: 403 });
+    }
+
+    /* the edit must exist and belong to this organization */
+    const { data: pendingEdit, error: editFetchError } = await supabaseClient
+        .from('organizationedits')
+        .select('id')
+        .eq('id', edit_id)
+        .eq('organization_id', organization_id)
+        .maybeSingle();
+    if (editFetchError) {
+        return new Response('Failed to fetch organization edit.', {
+            status: 500,
+        });
+    }
+    if (!pendingEdit) {
+        return new Response('Organization edit not found.', { status: 404 });
+    }
+
+    if (typeof updated_fields !== 'object' || Array.isArray(updated_fields)) {
+        return new Response('Invalid updated fields.', { status: 400 });
+    }
+    const notEditable = Object.keys(updated_fields).filter((field) =>
+        !EDITABLE_CHARTER_FIELDS.includes(field)
+    );
+    if (notEditable.length) {
+        return new Response(
+            `These fields can't be changed by a charter edit: ${
+                notEditable.join(', ')
+            }.`,
+            { status: 400 },
+        );
+    }
+
     const cleanedFields = cleanCharter(updated_fields);
 
     const problems = validateCharter(cleanedFields, false);
     if (problems.length) {
         return new Response(problems.join(' '), { status: 400 });
+    }
+
+    if (
+        typeof cleanedFields.url === 'string' &&
+        RESERVED_PATHS.includes(cleanedFields.url)
+    ) {
+        return new Response(
+            'You may not register an Epsilon URL that is already in use.',
+            { status: 400 },
+        );
     }
 
     type orgTyp = {
@@ -82,7 +139,20 @@ Deno.serve(async (req: Request) => {
         .returns<orgTyp[]>();
 
     if (updateError) {
-        return new Response('Failed to update organization.', { status: 500 });
+        return new Response('Failed to update organization.', {
+            status: dbErrorStatus(updateError),
+        });
+    }
+
+    /* nothing updated: either the org doesn't exist or RLS hid it */
+    if (!orgData || !orgData.length) {
+        const { data: org } = await supabaseClient.from('organizations')
+            .select('id')
+            .eq('id', organization_id);
+        if (!org || !org.length) {
+            return new Response('Organization not found.', { status: 404 });
+        }
+        return new Response('User is unauthorized.', { status: 403 });
     }
 
     const updatedOrgName = orgData[0].name;
@@ -92,7 +162,8 @@ Deno.serve(async (req: Request) => {
         'organizationedits',
     )
         .delete()
-        .eq('id', edit_id);
+        .eq('id', edit_id)
+        .eq('organization_id', organization_id);
 
     type orgAdminType = {
         id: number;
@@ -127,4 +198,4 @@ Deno.serve(async (req: Request) => {
             headers: { 'Content-Type': 'application/json' },
         },
     );
-});
+}));

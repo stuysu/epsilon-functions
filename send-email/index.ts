@@ -1,6 +1,7 @@
+import { readJson } from '../_shared/http.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import Transport from '../_shared/emailTransport.ts';
-import corsHeaders from '../_shared/cors.ts';
+import corsHeaders, { withCors } from '../_shared/cors.ts';
 
 type BodyType = {
     recipient: {
@@ -33,27 +34,30 @@ const createBreakpoint = (str: string) => {
     );
 };
 
-Deno.serve(async (req: Request) => {
+Deno.serve(withCors(async (req: Request) => {
     // This is needed if you're planning to invoke your function from a browser.
     // tells browser what type of requests are allowed
     if (req.method === 'OPTIONS') {
         return new Response('ok', { headers: corsHeaders });
     }
 
+    const bodyJson = await readJson(req);
+    if (!bodyJson) {
+        return new Response('Invalid JSON body.', { status: 400 });
+    }
+
+    /* recipient or content may be missing, so don't destructure them blindly */
+    const { recipient, content }: BodyType = bodyJson;
     const {
-        recipient,
-        recipient: {
-            recipient_type,
-            recipient_address,
-        },
-        content,
-        content: {
-            content_type,
-            content_title,
-            content_body,
-            content_parameters,
-        },
-    }: BodyType = await req.json();
+        recipient_type,
+        recipient_address,
+    } = (recipient ?? {}) as Partial<BodyType['recipient']>;
+    const {
+        content_type,
+        content_title,
+        content_body,
+        content_parameters,
+    } = (content ?? {}) as Partial<BodyType['content']>;
 
     if (
         !recipient || !content || !recipient_type || !recipient_address ||
@@ -64,6 +68,17 @@ Deno.serve(async (req: Request) => {
 
     if (recipient_type !== 'INDIVIDUAL' && recipient_type !== 'ORGANIZATION') {
         return new Response('Invalid recipient type.', { status: 400 });
+    }
+
+    if (
+        recipient_type === 'ORGANIZATION' &&
+        !Number.isInteger(Number(recipient_address))
+    ) {
+        return new Response('Invalid organization.', { status: 400 });
+    }
+
+    if (content_parameters != null && !Array.isArray(content_parameters)) {
+        return new Response('Invalid content parameters.', { status: 400 });
     }
 
     const authHeader = req.headers.get('Authorization');
@@ -133,7 +148,7 @@ Deno.serve(async (req: Request) => {
 
         if (!validRecipient || !validRecipient.length) {
             return new Response('Recipient is not a valid user.', {
-                status: 401,
+                status: 400,
             });
         }
     }
@@ -148,7 +163,7 @@ Deno.serve(async (req: Request) => {
 
     if (!isAdmin && content_type === 'CUSTOM') {
         return new Response('Invalid permissions for custom emails.', {
-            status: 401,
+            status: 403,
         });
     }
 
@@ -160,6 +175,7 @@ Deno.serve(async (req: Request) => {
                 organization_id
             `)
             .eq('user_id', siteUser.id)
+            .eq('active', true)
             .in('role', ['ADMIN', 'CREATOR']);
 
         if (adminOrgsError) {
@@ -174,7 +190,7 @@ Deno.serve(async (req: Request) => {
             /* check if user is an organization admin of the organization they are sending emails to. If not, no email access. */
             if (!adminOrgIds.includes(Number(recipient_address))) {
                 return new Response('Invalid permissions for sending emails.', {
-                    status: 401,
+                    status: 403,
                 });
             }
         } else {
@@ -210,7 +226,7 @@ Deno.serve(async (req: Request) => {
 
             if (!recipientMemberships || !recipientMemberships.length) {
                 return new Response('Invalid permissions for sending emails.', {
-                    status: 401,
+                    status: 403,
                 });
             }
         }
@@ -301,4 +317,4 @@ Deno.serve(async (req: Request) => {
             headers: { 'Content-Type': 'application/json' },
         },
     );
-});
+}));

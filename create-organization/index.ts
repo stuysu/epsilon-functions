@@ -1,7 +1,12 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import corsHeaders from '../_shared/cors.ts';
+import corsHeaders, { withCors } from '../_shared/cors.ts';
 import supabaseAdmin from '../_shared/supabaseAdmin.ts';
-import { cleanCharter, validateCharter } from '../_shared/charter.ts';
+import {
+    cleanCharter,
+    RESERVED_PATHS,
+    validateCharter,
+} from '../_shared/charter.ts';
+import { dbErrorStatus, readJson } from '../_shared/http.ts';
 
 type BodyType = {
     name: string;
@@ -25,24 +30,8 @@ type BodyType = {
     faculty_email?: string;
 };
 
-const RESERVED_PATHS = [
-    'catalog',
-    'create',
-    'about',
-    'meetings',
-    'rules',
-    'archive',
-    'modules',
-    'admin',
-    'attendance',
-    'opportunities',
-    'valentines',
-    'today',
-    'announcements',
-];
-
 /* accepts JSON */
-Deno.serve(async (req: Request) => {
+Deno.serve(withCors(async (req: Request) => {
     if (req.method === 'OPTIONS') {
         return new Response('ok', { headers: corsHeaders });
     }
@@ -64,7 +53,8 @@ Deno.serve(async (req: Request) => {
         .single()
         .returns<styp>();
     if (data?.setting_value) {
-        const deadline = new Date(data.setting_value);
+        // setting_value is a unix timestamp in seconds (like valentines_deadline)
+        const deadline = new Date(data.setting_value * 1000);
         if (new Date() > deadline) {
             return new Response(
                 `Chartering for this year has been disabled as of ${deadline.toLocaleString()}.`,
@@ -73,13 +63,13 @@ Deno.serve(async (req: Request) => {
         }
     }
 
-    const jwt = authHeader.split(' ')[1];
+    const jwt = authHeader?.split(' ')[1];
     const { data: userData } = await supabaseClient.auth.getUser(jwt);
     const user = userData.user;
 
     /* Failed to fetch supabase user */
     if (!user) {
-        return new Response('Failed to fetch user.', { status: 500 });
+        return new Response('Failed to fetch user.', { status: 401 });
     }
 
     /* check if user is a verified user. Verified user = the userdata that the site uses */
@@ -99,14 +89,18 @@ Deno.serve(async (req: Request) => {
     }
 
     const siteUser = verifiedUsers[0];
-    const body: BodyType = cleanCharter(await req.json());
+    const bodyJson = await readJson(req);
+    if (!bodyJson) {
+        return new Response('Invalid JSON body.', { status: 400 });
+    }
+    const body: BodyType = cleanCharter(bodyJson);
 
     const problems = validateCharter(body, true);
     if (problems.length) {
         return new Response(problems.join(' '), { status: 400 });
     }
 
-    if (RESERVED_PATHS.indexOf(body.url) !== -1) {
+    if (RESERVED_PATHS.includes(body.url.toLowerCase())) {
         return new Response(
             'You may not register an Epsilon URL that is already in use.',
             { status: 400 },
@@ -146,7 +140,7 @@ Deno.serve(async (req: Request) => {
             `Error creating organization. \`${(orgCreateError?.message ||
                 orgCreateError?.code ||
                 'Unknown error. Contact it@stuysu.org.')}\``,
-            { status: 500 },
+            { status: dbErrorStatus(orgCreateError) },
         );
     }
 
@@ -160,6 +154,10 @@ Deno.serve(async (req: Request) => {
         });
 
     if (membershipError) {
+        /* don't leave a club behind with no creator holding its name and URL */
+        await supabaseAdmin.from('organizations')
+            .delete()
+            .eq('id', orgData[0].id);
         return new Response(
             'Error creating membership. Please contact it@stuysu.org as soon as possible.',
             { status: 500 },
@@ -175,4 +173,4 @@ Deno.serve(async (req: Request) => {
             headers: { 'Content-Type': 'application/json' },
         },
     );
-});
+}));

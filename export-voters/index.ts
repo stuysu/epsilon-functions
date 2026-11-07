@@ -1,7 +1,8 @@
 import supabaseAdmin from '../_shared/supabaseAdmin.ts';
 import * as jose from 'https://deno.land/x/jose@v5.9.6/index.ts';
+import { withCors } from '../_shared/cors.ts';
 
-Deno.serve(async (req: Request) => {
+Deno.serve(withCors(async (req: Request) => {
     const jwt = req.headers.get('Authorization')?.replace('Bearer ', '');
     if (!jwt) {
         return new Response(
@@ -129,4 +130,4 @@ Deno.serve(async (req: Request) => {
             },
         );
     }
-});
+}));

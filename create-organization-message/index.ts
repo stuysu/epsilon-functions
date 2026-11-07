@@ -1,7 +1,8 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import corsHeaders from '../_shared/cors.ts';
+import corsHeaders, { withCors } from '../_shared/cors.ts';
 import Transport from '../_shared/emailTransport.ts';
 import { footer } from '../_shared/strings.ts';
+import { dbErrorStatus, readJson } from '../_shared/http.ts';
 
 type BodyType = {
     organization_id: number;
@@ -9,15 +10,20 @@ type BodyType = {
 };
 
 /* accepts JSON */
-Deno.serve(async (req: Request) => {
+Deno.serve(withCors(async (req: Request) => {
     if (req.method === 'OPTIONS') {
         return new Response('ok', { headers: corsHeaders });
+    }
+
+    const bodyJson = await readJson(req);
+    if (!bodyJson) {
+        return new Response('Invalid JSON body.', { status: 400 });
     }
 
     const {
         organization_id,
         content,
-    }: BodyType = await req.json();
+    }: BodyType = bodyJson;
 
     if (!organization_id || !content) {
         return new Response('Missing field', { status: 400 });
@@ -30,13 +36,13 @@ Deno.serve(async (req: Request) => {
         { global: { headers: { Authorization: authHeader } } },
     );
 
-    const jwt = authHeader.split(' ')[1];
+    const jwt = authHeader?.split(' ')[1];
     const { data: userData } = await supabaseClient.auth.getUser(jwt);
     const user = userData.user;
 
     /* Failed to fetch supabase user */
     if (!user) {
-        return new Response('Failed to fetch user.', { status: 500 });
+        return new Response('Failed to fetch user.', { status: 401 });
     }
 
     /* check if user is a verified user. Verified user = the userdata that the site uses */
@@ -84,7 +90,7 @@ Deno.serve(async (req: Request) => {
 
     if (createError || !orgData || !orgData.length) {
         return new Response('Error creating organization message.', {
-            status: 500,
+            status: dbErrorStatus(createError),
         });
     }
 
@@ -115,6 +121,7 @@ Deno.serve(async (req: Request) => {
             )
         `)
         .eq('organization_id', organization_id)
+        .eq('active', true)
         .in('role', ['ADMIN', 'CREATOR'])
         .returns<orgAdminType[]>();
 
@@ -164,4 +171,4 @@ You can view this message at ${
             headers: { 'Content-Type': 'application/json' },
         },
     );
-});
+}));

@@ -1,6 +1,6 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import { sendOrgEmail } from '../_shared/utils.ts';
-import corsHeaders from '../_shared/cors.ts';
+import { isSiteAdmin, sendOrgEmail } from '../_shared/utils.ts';
+import corsHeaders, { withCors } from '../_shared/cors.ts';
 import { footer } from '../_shared/strings.ts';
 
 type BodyType = {
@@ -8,21 +8,23 @@ type BodyType = {
     edit_id: number;
 };
 
-Deno.serve(async (req: Request) => {
+const isId = (v: unknown): v is number =>
+    Number.isInteger(v) && (v as number) > 0;
+
+Deno.serve(withCors(async (req: Request) => {
     if (req.method === 'OPTIONS') {
         return new Response('ok', { headers: corsHeaders });
     }
 
-    const {
-        organization_id,
-        edit_id,
-    }: BodyType = await req.json();
+    const reqBody: BodyType | null = await req.json().catch(() => null);
+    const organization_id = reqBody?.organization_id;
+    const edit_id = reqBody?.edit_id;
 
-    if (!organization_id || !edit_id) {
+    if (!isId(organization_id) || !isId(edit_id)) {
         return new Response('Missing field', { status: 400 });
     }
 
-    const authHeader = req.headers.get('Authorization')!;
+    const authHeader = req.headers.get('Authorization') ?? '';
     const supabaseClient = createClient(
         Deno.env.get('SUPABASE_URL') ?? '',
         Deno.env.get('SUPABASE_ANON_KEY') ?? '',
@@ -31,11 +33,11 @@ Deno.serve(async (req: Request) => {
 
     const jwt = authHeader.split(' ')[1];
     const { data: userData } = await supabaseClient.auth.getUser(jwt);
-    const user = userData.user;
+    const user = userData?.user;
 
     /* Failed to fetch supabase user */
     if (!user) {
-        return new Response('Failed to fetch user.', { status: 500 });
+        return new Response('Failed to fetch user.', { status: 401 });
     }
 
     /* check if user is a verified user. Verified user = the userdata that the site uses */
@@ -52,6 +54,10 @@ Deno.serve(async (req: Request) => {
 
     if (!verifiedUsers || !verifiedUsers.length) {
         return new Response('User is unauthorized.', { status: 401 });
+    }
+
+    if (!(await isSiteAdmin(user.email))) {
+        return new Response('Permission denied.', { status: 403 });
     }
 
     type orgTyp = {
@@ -72,14 +78,23 @@ Deno.serve(async (req: Request) => {
         return new Response('Failed to get organization.', { status: 500 });
     }
 
+    if (!orgData || !orgData.length) {
+        return new Response('Organization not found.', { status: 404 });
+    }
+
     const rejectedOrgName = orgData[0].name;
 
-    /* Try deleting edit */
-    const { error: deleteEditError } = await supabaseClient.from(
-        'organizationedits',
-    )
+    /* Try deleting edit (must belong to this organization) */
+    const { data: deletedEdits, error: deleteEditError } = await supabaseClient
+        .from('organizationedits')
         .delete()
-        .eq('id', edit_id);
+        .eq('id', edit_id)
+        .eq('organization_id', organization_id)
+        .select('id');
+
+    if (!deleteEditError && (!deletedEdits || !deletedEdits.length)) {
+        return new Response('Organization edit not found.', { status: 404 });
+    }
 
     if (deleteEditError) {
         return new Response(
@@ -106,4 +121,4 @@ For more information, please check your club admin panel's messages tab.` +
             headers: { 'Content-Type': 'application/json' },
         },
     );
-});
+}));

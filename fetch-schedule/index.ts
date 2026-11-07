@@ -1,7 +1,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import corsHeaders from '../_shared/cors.ts';
+import { withCors } from '../_shared/cors.ts';
 
-Deno.serve(async (req: Request) => {
+Deno.serve(withCors(async (req: Request) => {
     const url = new URL(req.url);
     const name = url.searchParams.get('name');
 
@@ -21,11 +21,14 @@ Deno.serve(async (req: Request) => {
         .single();
 
     if (scheduleError) {
-        return new Response('Failed to fetch schedule.', { status: 500 });
+        return new Response('Failed to fetch schedule.', {
+            // PGRST116: no schedule with that name
+            status: scheduleError.code === 'PGRST116' ? 404 : 500,
+        });
     }
 
     return new Response(
         JSON.stringify(scheduleData.schedule),
         { headers: { 'Content-Type': 'application/json' } },
     );
-});
+}));

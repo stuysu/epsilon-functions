@@ -1,13 +1,14 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import corsHeaders from '../_shared/cors.ts';
+import corsHeaders, { withCors } from '../_shared/cors.ts';
 
 import { datetime } from 'https://deno.land/x/ptera/mod.ts';
+import { dbErrorStatus, readJson } from '../_shared/http.ts';
 
 type BodyType = {
     message_id: number;
 };
 
-Deno.serve(async (req: Request) => {
+Deno.serve(withCors(async (req: Request) => {
     if (req.method === 'OPTIONS') {
         return new Response('ok', { headers: corsHeaders });
     }
@@ -20,44 +21,53 @@ Deno.serve(async (req: Request) => {
         { global: { headers: { Authorization: authHeader } } },
     );
 
-    const jwt = authHeader.split(' ')[1];
+    const jwt = authHeader?.split(' ')[1];
     const { data: userData } = await supabaseClient.auth.getUser(jwt);
     const user = userData.user;
 
     if (!user) {
-        return new Response('Failed to fetch user.', { status: 500 });
+        return new Response('Failed to fetch user.', { status: 401 });
     }
 
-    const { data: verifiedUser, error: verifiedUserError } =
-        await supabaseClient
-            .from('permissions')
-            .select('permission,users!inner(id)')
-            .eq('users.email', user.email)
-            .maybeSingle();
+    /* a user can hold several permissions, so look through all of them */
+    const { data: permissions, error: permissionsError } = await supabaseClient
+        .from('permissions')
+        .select('permission,users!inner(id)')
+        .eq('users.email', user.email);
 
-    if (verifiedUserError) {
-        console.log(verifiedUserError);
+    if (permissionsError) {
+        console.log(permissionsError);
         return new Response(`Failed to fetch user id.`, {
             status: 500,
         });
     }
 
-    if (!verifiedUser) {
-        return new Response('User is unauthorized.', { status: 401 });
+    /* signed in, but holds no permissions */
+    if (!permissions?.length) {
+        return new Response('User is unauthorized.', { status: 403 });
     }
 
     if (
-        verifiedUser.permission !== 'ADMIN' &&
-        verifiedUser.permission !== 'VALENTINES'
+        !permissions.some(
+            ({ permission }) =>
+                permission === 'ADMIN' || permission === 'VALENTINES',
+        )
     ) {
         return new Response('Permission Denied', { status: 403 });
     }
 
-    const bodyJson = await req.json();
+    const bodyJson = await readJson(req);
+    if (!bodyJson) {
+        return new Response('Invalid JSON body.', { status: 400 });
+    }
 
     const body: BodyType = {
         message_id: bodyJson.message_id,
     };
+
+    if (!body.message_id) {
+        return new Response('No message id provided.', { status: 400 });
+    }
 
     const { data: messageData, error: messageDataError } = await supabaseClient
         .from('valentinesmessages')
@@ -67,7 +77,7 @@ Deno.serve(async (req: Request) => {
 
     if (messageDataError) {
         return new Response('Failed to fetch message', {
-            status: 500,
+            status: dbErrorStatus(messageDataError),
         });
     }
 
@@ -81,7 +91,8 @@ Deno.serve(async (req: Request) => {
         .from('valentinesmessages')
         .update({
             verified_at: currentTime,
-            verified_by: verifiedUser.users.id,
+            // each permission row belongs to one user, though the inferred type is a list
+            verified_by: (permissions[0].users as unknown as { id: number }).id,
         })
         .eq('id', body.message_id);
 
@@ -98,4 +109,4 @@ Deno.serve(async (req: Request) => {
             headers: { 'Content-Type': 'application/json' },
         },
     );
-});
+}));

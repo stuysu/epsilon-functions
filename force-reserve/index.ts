@@ -1,6 +1,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import { sendOrgEmail } from '../_shared/utils.ts';
-import corsHeaders from '../_shared/cors.ts';
+import { isSiteAdmin, sendOrgEmail } from '../_shared/utils.ts';
+import supabaseAdmin from '../_shared/supabaseAdmin.ts';
+import corsHeaders, { withCors } from '../_shared/cors.ts';
 import { datetime } from 'https://deno.land/x/ptera/mod.ts';
 import { footer } from '../_shared/strings.ts';
 
@@ -12,37 +13,28 @@ type BodyType = {
     title?: string;
 };
 
-Deno.serve(async (req: Request) => {
+Deno.serve(withCors(async (req: Request) => {
     if (req.method === 'OPTIONS') {
         return new Response('ok', { headers: corsHeaders });
     }
 
-    const {
-        room_id,
-        organization_id,
-        start_time,
-        end_time,
-        title,
-    }: BodyType = await req.json();
-
-    if (!room_id || !organization_id || !start_time || !end_time) {
-        return new Response('Missing field', { status: 400 });
+    const authHeader = req.headers.get('Authorization');
+    const jwt = authHeader?.split(' ')[1];
+    if (!authHeader || !jwt) {
+        return new Response('Not signed in.', { status: 401 });
     }
-
-    const authHeader = req.headers.get('Authorization')!;
     const supabaseClient = createClient(
         Deno.env.get('SUPABASE_URL') ?? '',
         Deno.env.get('SUPABASE_ANON_KEY') ?? '',
         { global: { headers: { Authorization: authHeader } } },
     );
 
-    const jwt = authHeader.split(' ')[1];
     const { data: userData } = await supabaseClient.auth.getUser(jwt);
-    const user = userData.user;
+    const user = userData?.user;
 
-    /* Failed to fetch supabase user */
+    /* no signed-in user (missing, expired or anon token) */
     if (!user) {
-        return new Response('Failed to fetch user.', { status: 500 });
+        return new Response('Not signed in.', { status: 401 });
     }
 
     /* check if user is a verified user. Verified user = the userdata that the site uses */
@@ -61,7 +53,54 @@ Deno.serve(async (req: Request) => {
         return new Response('User is unauthorized.', { status: 401 });
     }
 
-    /* validation via RLS */
+    /* only site admins may force reserve (RLS alone would let club admins insert) */
+    if (!(await isSiteAdmin(user.email))) {
+        return new Response('Only site admins can force reserve rooms.', {
+            status: 403,
+        });
+    }
+
+    let body: BodyType;
+    try {
+        body = await req.json();
+    } catch {
+        return new Response('Invalid request body.', { status: 400 });
+    }
+    if (!body || typeof body !== 'object') {
+        return new Response('Invalid request body.', { status: 400 });
+    }
+    const { room_id, organization_id, start_time, end_time, title } = body;
+
+    if (!room_id || !organization_id || !start_time || !end_time) {
+        return new Response('Missing field', { status: 400 });
+    }
+    if (!Number.isInteger(room_id) || !Number.isInteger(organization_id)) {
+        return new Response('Invalid room or organization.', { status: 400 });
+    }
+    const startMs = new Date(start_time).getTime();
+    const endMs = new Date(end_time).getTime();
+    if (isNaN(startMs) || isNaN(endMs) || endMs <= startMs) {
+        return new Response('Invalid start or end time.', { status: 400 });
+    }
+
+    const { data: organization, error: orgFetchError } = await supabaseAdmin
+        .from('organizations')
+        .select('id, state')
+        .eq('id', organization_id)
+        .maybeSingle();
+    if (orgFetchError) {
+        return new Response('Failed to fetch organization.', { status: 500 });
+    }
+    if (!organization) {
+        return new Response('Organization not found.', { status: 404 });
+    }
+    /* a charter still under review isn't a club yet, so it can't take a room */
+    if (organization.state === 'PENDING') {
+        return new Response(
+            'This organization is still pending approval.',
+            { status: 409 },
+        );
+    }
 
     /*
     check if there is any interference with time and room.
@@ -84,10 +123,13 @@ Deno.serve(async (req: Request) => {
         .from('rooms')
         .select('ais_days')
         .eq('id', room_id)
-        .single();
+        .maybeSingle();
 
-    if (roomFetchError || !roomData) {
+    if (roomFetchError) {
         return new Response('Failed to fetch room.', { status: 500 });
+    }
+    if (!roomData) {
+        return new Response('Room not found.', { status: 404 });
     }
 
     const daysOfWeek = [
@@ -143,15 +185,24 @@ Deno.serve(async (req: Request) => {
             return new Response('Failed to fetch meetings', { status: 500 });
         }
 
-        const heldIds = heldMeetings.map((meeting) => meeting.id);
-        const cancellableIds = conflictingMeetingIds.filter((id) =>
-            !heldIds.includes(id)
-        );
+        /* an admin club holds the room: refuse before cancelling or emailing anyone */
+        if (heldMeetings.length) {
+            const holders = [
+                ...new Set(
+                    heldMeetings.map((meeting) => meeting.organizations.name),
+                ),
+            ].join(', ');
+
+            return new Response(
+                `This room is held by an admin club (${holders}) during that time, so it was not reserved.`,
+                { status: 409 },
+            );
+        }
 
         const { data: removedMeetings, error: orgError } = await supabaseClient
             .from('meetings')
             .delete()
-            .in('id', cancellableIds)
+            .in('id', conflictingMeetingIds)
             .select(`
                 title,
                 start_time,
@@ -219,33 +270,14 @@ We sincerely apologize for the inconvenience.` + footer;
                 false,
             );
         }
-
-        if (heldMeetings.length) {
-            const holders = [
-                ...new Set(
-                    heldMeetings.map((meeting) => meeting.organizations.name),
-                ),
-            ].join(', ');
-
-            const cancelled = removedMeetings.length
-                ? ` ${removedMeetings.length} other meeting${
-                    removedMeetings.length === 1 ? ' was' : 's were'
-                } cancelled.`
-                : '';
-
-            return new Response(
-                `This room is held by an admin club (${holders}) during that time, so it was not reserved.${cancelled}`,
-                { status: 409 },
-            );
-        }
     }
 
     const { error: reserveError } = await supabaseClient.from('meetings')
         .insert({
             room_id,
             organization_id,
-            start_time: datetime(start_time).toISO(),
-            end_time: datetime(end_time).toISO(),
+            start_time: new Date(start_time).toISOString(),
+            end_time: new Date(end_time).toISOString(),
             title: meetingTitle,
             description: 'This meeting was reserved by an admin.',
         });
@@ -262,4 +294,4 @@ We sincerely apologize for the inconvenience.` + footer;
             headers: { 'Content-Type': 'application/json' },
         },
     );
-});
+}));

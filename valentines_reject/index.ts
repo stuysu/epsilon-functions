@@ -1,17 +1,18 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import corsHeaders from '../_shared/cors.ts';
+import corsHeaders, { withCors } from '../_shared/cors.ts';
 
 import { datetime } from 'https://deno.land/x/ptera/mod.ts';
 import Transport from '../_shared/emailTransport.ts';
 import { footer } from '../_shared/strings.ts';
 import { safeSupabaseQuery } from '../_shared/utils.ts';
+import { dbErrorStatus, readJson } from '../_shared/http.ts';
 
 type BodyType = {
     message_id: number;
     reason?: string;
 };
 
-Deno.serve(async (req: Request) => {
+Deno.serve(withCors(async (req: Request) => {
     if (req.method === 'OPTIONS') {
         return new Response('ok', { headers: corsHeaders });
     }
@@ -24,39 +25,46 @@ Deno.serve(async (req: Request) => {
         { global: { headers: { Authorization: authHeader } } },
     );
 
-    const jwt = authHeader.split(' ')[1];
+    const jwt = authHeader?.split(' ')[1];
     const { data: userData } = await supabaseClient.auth.getUser(jwt);
     const user = userData.user;
 
     if (!user) {
-        return new Response('Failed to fetch user.', { status: 500 });
+        return new Response('Failed to fetch user.', { status: 401 });
     }
 
-    const { data: verifiedUser, error: verifiedUserError } =
-        await supabaseClient
-            .from('permissions')
-            .select('permission,users!inner(id)')
-            .eq('users.email', user.email)
-            .maybeSingle();
+    /* a user can hold several permissions, so look through all of them */
+    const { data: permissions, error: permissionsError } = await supabaseClient
+        .from('permissions')
+        .select('permission,users!inner(id)')
+        .eq('users.email', user.email);
 
-    if (verifiedUserError) {
-        return new Response('Failed to fetch user id.', {
+    if (permissionsError) {
+        console.log(permissionsError);
+        return new Response(`Failed to fetch user id.`, {
             status: 500,
         });
     }
 
-    if (!verifiedUser) {
-        return new Response('User is unauthorized.', { status: 401 });
+    /* signed in, but holds no permissions */
+    if (!permissions?.length) {
+        return new Response('User is unauthorized.', { status: 403 });
     }
 
     if (
-        verifiedUser.permission !== 'ADMIN' &&
-        verifiedUser.permission !== 'VALENTINES'
+        !permissions.some(
+            ({ permission }) =>
+                permission === 'ADMIN' || permission === 'VALENTINES',
+        )
     ) {
         return new Response('Permission Denied', { status: 403 });
     }
 
-    const body = await req.json() as BodyType;
+    const body = await readJson(req) as BodyType | null;
+
+    if (!body) {
+        return new Response('Invalid JSON body.', { status: 400 });
+    }
 
     if (!body.message_id) {
         return new Response('No message id provided.', { status: 400 });
@@ -70,7 +78,7 @@ Deno.serve(async (req: Request) => {
 
     if (messageDataError) {
         return new Response('Failed to fetch message', {
-            status: 500,
+            status: dbErrorStatus(messageDataError),
         });
     }
     if (messageData.verified_by && messageData.verified_at) {
@@ -100,21 +108,38 @@ Recipient: ${receiver.email}
 Content: ${messageData.message || '[empty message]'}
 
 You may submit a new message if desired.` + footer;
-        await Transport.sendMail({
-            from: Deno.env.get('NODEMAILER_FROM')!,
-            to: sender.email,
-            subject: '[Epsilon Valentines] Message Removed',
-            text,
-        });
-        const { error: messageDeleteError } = await supabaseClient
-            .from('valentinesmessages')
-            .delete()
-            .eq('id', body.message_id);
+        /* delete first so the sender is only told once it's really gone */
+        const { data: deletedMessages, error: messageDeleteError } =
+            await supabaseClient
+                .from('valentinesmessages')
+                .delete()
+                .eq('id', body.message_id)
+                .select('id');
 
         if (messageDeleteError) {
             return new Response('Failed to delete message', {
                 status: 500,
             });
+        }
+
+        if (!deletedMessages || !deletedMessages.length) {
+            return new Response('Message not found.', { status: 404 });
+        }
+
+        /* the message is already gone, so a mail failure must not turn this
+           into an error the moderator would retry */
+        try {
+            await Transport.sendMail({
+                from: Deno.env.get('NODEMAILER_FROM')!,
+                to: sender.email,
+                subject: '[Epsilon Valentines] Message Removed',
+                text,
+            });
+        } catch (error) {
+            console.error(
+                'Failed to email sender:',
+                error instanceof Error ? error.message : error,
+            );
         }
 
         return new Response(
@@ -126,4 +151,4 @@ You may submit a new message if desired.` + footer;
     } catch (_error) {
         return new Response('Failed to fetch users', { status: 500 });
     }
-});
+}));
