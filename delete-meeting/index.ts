@@ -79,14 +79,14 @@ Deno.serve(withCors(async (req: Request) => {
         return new Response('Meeting not found.', { status: 404 });
     }
 
-    /* only org ADMIN/CREATOR or site ADMIN may delete (mirrors RLS) */
+    /* only club leaders, advisors or site admins may delete (mirrors RLS) */
     const { data: orgAdminRows, error: orgAdminError } = await supabaseAdmin
         .from('memberships')
         .select('id, users!inner ( email )')
         .eq('organization_id', oldMeetingData[0].organization_id)
         .eq('users.email', user.email)
         .eq('active', true)
-        .in('role', ['ADMIN', 'CREATOR'])
+        .in('role', ['ADMIN', 'CREATOR', 'ADVISOR'])
         .limit(1);
 
     if (orgAdminError) {

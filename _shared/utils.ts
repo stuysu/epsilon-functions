@@ -1,5 +1,6 @@
 import supabaseAdmin from './supabaseAdmin.ts';
 import Transport from './emailTransport.ts';
+import { footer } from './strings.ts';
 import { datetime } from 'https://deno.land/x/ptera/mod.ts';
 
 const MIN_LENGTH = 30; // minutes
@@ -492,4 +493,39 @@ export const safeSupabaseQuery = async (clientPromise: Promise<any>) => {
         throw error;
     }
     return data;
+};
+
+export const unlockOrganizationIfReady = async (orgId: number) => {
+    const { data: org } = await supabaseAdmin.from('organizations')
+        .select('state')
+        .eq('id', orgId)
+        .maybeSingle();
+
+    if (org?.state !== 'LOCKED') return;
+
+    const { count } = await supabaseAdmin.from('memberships')
+        .select('id', { count: 'exact', head: true })
+        .eq('organization_id', orgId)
+        .eq('active', true)
+        .neq('role', 'ADVISOR');
+
+    if ((count ?? 0) >= await fetchMemberRequirement()) {
+        const emailText =
+            `You are receiving this email because your organization {ORG_NAME} has been approved and unlocked.
+
+You can begin creating meetings, making posts, and your organization will be displayed on the club catalog.
+
+We hope you enjoy your club experience at Stuy!` + footer;
+        const subject = `Organization Unlocked: {ORG_NAME} | Epsilon`;
+
+        const { data: unlocked } = await supabaseAdmin.from('organizations')
+            .update({ state: 'UNLOCKED' })
+            .eq('id', orgId)
+            .eq('state', 'LOCKED')
+            .select('id');
+
+        if (unlocked?.length) {
+            await sendOrgEmail(orgId, subject, emailText, false, true);
+        }
+    }
 };

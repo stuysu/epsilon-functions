@@ -26,7 +26,7 @@ const RULES: { [field: string]: Rule } = {
         pattern: /^[a-z0-9-]+$/,
         patternMessage: 'can only have lowercase letters, numbers and dashes',
     },
-    socials: { label: 'Socials', maxChar: 100 },
+    socials: { label: 'Socials', maxChar: 2500 },
     mission: {
         label: 'Mission',
         required: true,
@@ -86,6 +86,86 @@ const isWebLink = (value: string) => {
     } catch {
         return false;
     }
+};
+
+/* kept in sync with LINK_TYPES in the site's src/utils/SocialLinks.ts */
+const LINK_TYPES: Record<string, { label: string; hosts?: string[] }> = {
+    website: { label: 'Website' },
+    instagram: { label: 'Instagram', hosts: ['instagram.com'] },
+    tiktok: { label: 'TikTok', hosts: ['tiktok.com'] },
+    linktree: { label: 'Linktree', hosts: ['linktr.ee'] },
+    discord: { label: 'Discord', hosts: ['discord.gg', 'discord.com'] },
+    youtube: { label: 'YouTube', hosts: ['youtube.com', 'youtu.be'] },
+    x: { label: 'X (Twitter)', hosts: ['x.com', 'twitter.com'] },
+    facebook: { label: 'Facebook', hosts: ['facebook.com', 'fb.com'] },
+    linkedin: { label: 'LinkedIn', hosts: ['linkedin.com'] },
+    github: { label: 'GitHub', hosts: ['github.com'] },
+    form: {
+        label: 'Sign-up Form',
+        hosts: ['forms.gle', 'docs.google.com', 'forms.office.com'],
+    },
+    other: { label: 'Other' },
+};
+
+/* socials is a JSON list of {type, url, name}; older charters have links
+   separated by spaces */
+const socialsProblems = (socials: string): string[] => {
+    const text = socials.trim();
+    if (!text.startsWith('[')) {
+        const invalid = text.split(/\s+/).filter((s) => s && !isWebLink(s));
+        return invalid.length
+            ? [`Not a valid link: ${invalid.join(', ')}.`]
+            : [];
+    }
+    let list: unknown;
+    try {
+        list = JSON.parse(text);
+    } catch {
+        return ['Links could not be read.'];
+    }
+    if (!Array.isArray(list)) return ['Links could not be read.'];
+    if (list.length > 8) return ['Add at most 8 links.'];
+    const problems: string[] = [];
+    list.forEach((item, i) => {
+        const n = i + 1;
+        const link = item as { type?: unknown; url?: unknown; name?: unknown };
+        const info = typeof link?.type === 'string'
+            ? LINK_TYPES[link.type]
+            : undefined;
+        if (!info) {
+            problems.push(`Link ${n} has no type.`);
+            return;
+        }
+        if (
+            typeof link.url !== 'string' || link.url.length > 200 ||
+            !isWebLink(link.url)
+        ) {
+            problems.push(`Link ${n} isn't a valid link.`);
+            return;
+        }
+        if (info.hosts) {
+            const host = new URL(
+                /^[a-z][a-z0-9+.-]*:\/\//i.test(link.url)
+                    ? link.url
+                    : `https://${link.url}`,
+            ).hostname.toLowerCase().replace(/^www\./, '');
+            if (!info.hosts.some((h) => host === h || host.endsWith(`.${h}`))) {
+                problems.push(
+                    `Link ${n} isn't ${
+                        /^[aeiou]/i.test(info.label) ? 'an' : 'a'
+                    } ${info.label} link.`,
+                );
+            }
+        }
+        if (link.name !== undefined && typeof link.name !== 'string') {
+            problems.push(`Link ${n} has an invalid name.`);
+        } else if (typeof link.name === 'string' && link.name.length > 30) {
+            problems.push(`Link ${n}'s name must be at most 30 characters.`);
+        } else if (link.type === 'other' && !link.name?.trim()) {
+            problems.push(`Link ${n} needs a name.`);
+        }
+    });
+    return problems;
 };
 
 /* the organization columns a charter edit may change (the organizationedits
@@ -200,18 +280,8 @@ export const validateCharter = (
         }
     }
 
-    /* the charter form asks for links with just a space between them */
     if (typeof fields.socials === 'string' && fields.socials) {
-        const invalid = fields.socials.split(/\s+/).filter((social: string) =>
-            social && !isWebLink(social)
-        );
-        if (invalid.length) {
-            problems.push(
-                `Socials must be links separated by spaces, like instagram.com/stuysu. Not a valid link: ${
-                    invalid.join(', ')
-                }.`,
-            );
-        }
+        problems.push(...socialsProblems(fields.socials));
     }
 
     if (

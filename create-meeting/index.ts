@@ -4,10 +4,12 @@ import corsHeaders, { withCors } from '../_shared/cors.ts';
 import { datetime } from 'https://deno.land/x/ptera/mod.ts';
 import {
     checkAdvisor,
+    isSiteAdmin,
     isValidMeeting,
     roomRequiresAdvisor,
     sendOrgEmail,
 } from '../_shared/utils.ts';
+import supabaseAdmin from '../_shared/supabaseAdmin.ts';
 import { footer } from '../_shared/strings.ts';
 import { dbErrorStatus, readJson } from '../_shared/http.ts';
 
@@ -97,7 +99,7 @@ Deno.serve(withCors(async (req: Request) => {
     const advisor = bodyJson.advisor?.trim() || null;
     const body: BodyType = {
         organization_id: bodyJson.organization_id,
-        title: bodyJson.title,
+        title: typeof bodyJson.title === 'string' ? bodyJson.title.trim() : '',
         description: bodyJson.description,
         room_id: bodyJson.room_id,
         start_time: bodyJson.start_time,
@@ -109,6 +111,33 @@ Deno.serve(withCors(async (req: Request) => {
 
     if (!body.organization_id || !body.title) {
         return new Response('Missing field', { status: 400 });
+    }
+    if (!Number.isInteger(body.organization_id)) {
+        return new Response('Invalid organization.', { status: 400 });
+    }
+
+    /* the insert below skips RLS, so check the caller's role here */
+    if (!(await isSiteAdmin(user.email))) {
+        const { data: leaderMembership, error: membershipError } =
+            await supabaseAdmin
+                .from('memberships')
+                .select('id')
+                .eq('organization_id', body.organization_id)
+                .eq('user_id', verifiedUsers[0].id)
+                .eq('active', true)
+                .in('role', ['ADMIN', 'CREATOR', 'ADVISOR'])
+                .limit(1);
+        if (membershipError) {
+            return new Response('Failed to check permissions.', {
+                status: 500,
+            });
+        }
+        if (!leaderMembership || !leaderMembership.length) {
+            return new Response(
+                'You must be a leader or advisor of this organization to schedule its meetings.',
+                { status: 403 },
+            );
+        }
     }
 
     /* time (+ room) validation */
@@ -147,7 +176,7 @@ Deno.serve(withCors(async (req: Request) => {
         };
     };
     const { data: createMeetingData, error: createMeetingError } =
-        await supabaseClient.from('meetings')
+        await supabaseAdmin.from('meetings')
             .insert({
                 organization_id: body.organization_id,
                 title: body.title,
@@ -161,6 +190,13 @@ Deno.serve(withCors(async (req: Request) => {
             .select(returnSelect)
             .returns<rtyp[]>();
 
+    /* another booking for this room landed first */
+    if (createMeetingError?.code === '23P01') {
+        return new Response(
+            'That room was just booked for this time. Choose another room or time.',
+            { status: 409 },
+        );
+    }
     if (createMeetingError || !createMeetingData || !createMeetingData.length) {
         return new Response('Could not create meeting.', {
             status: dbErrorStatus(createMeetingError),
