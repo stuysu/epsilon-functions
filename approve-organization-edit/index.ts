@@ -158,7 +158,15 @@ Deno.serve(withCors(async (req: Request) => {
 
     const updatedOrgName = orgData[0].name;
 
-    await supabaseAdmin.rpc('add_charter_advisor', { org_id: organization_id });
+    if ('faculty_email' in cleanedFields) {
+        const { error: advisorError } = await supabaseAdmin.rpc(
+            'add_charter_advisor',
+            { org_id: organization_id },
+        );
+        if (advisorError) {
+            console.error('[APPROVE_EDIT] advisor failed', advisorError);
+        }
+    }
 
     /* Try deleting edit */
     const { error: deleteEditError } = await supabaseClient.from(

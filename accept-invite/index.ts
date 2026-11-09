@@ -60,6 +60,31 @@ Deno.serve(withCors(async (req: Request) => {
         return fail('This invitation was not found.', 404);
     }
 
+    const { data: organization } = await supabaseAdmin
+        .from('organizations')
+        .select('state')
+        .eq('id', invite.organization_id)
+        .maybeSingle();
+
+    if (
+        !organization || organization.state === 'PENDING' ||
+        organization.state === 'PUNISHED'
+    ) {
+        return fail('This Activity is not accepting members right now.', 409);
+    }
+
+    // claim the invite first so a cancel that lands meanwhile can't be accepted
+    const { data: claimed } = await supabaseAdmin
+        .from('organization_invites')
+        .update({ status: 'accepted' })
+        .eq('id', invite.id)
+        .eq('status', 'pending')
+        .select('id');
+
+    if (!claimed || !claimed.length) {
+        return fail('This invitation was not found.', 404);
+    }
+
     const { error: membershipError } = await supabaseAdmin
         .from('memberships')
         .upsert(
@@ -73,12 +98,11 @@ Deno.serve(withCors(async (req: Request) => {
 
     if (membershipError) {
         console.error('[ACCEPT_INVITE] membership failed', membershipError);
+        await supabaseAdmin.from('organization_invites')
+            .update({ status: 'pending' })
+            .eq('id', invite.id);
         return fail('Error joining organization.', 422);
     }
-
-    await supabaseAdmin.from('organization_invites')
-        .update({ status: 'accepted' })
-        .eq('id', invite.id);
 
     await unlockOrganizationIfReady(invite.organization_id);
 

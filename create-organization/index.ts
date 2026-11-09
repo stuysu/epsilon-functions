@@ -135,6 +135,12 @@ Deno.serve(withCors(async (req: Request) => {
             id
         `);
 
+    if (orgCreateError?.code === '23505') {
+        return new Response(
+            'This URL is already in use. Go back and choose another.',
+            { status: 409 },
+        );
+    }
     if (orgCreateError || !orgData || !orgData.length) {
         return new Response(
             `Error creating organization. \`${(orgCreateError?.message ||

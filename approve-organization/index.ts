@@ -123,7 +123,13 @@ Deno.serve(withCors(async (req: Request) => {
 
     const approvedOrgName = orgData[0].name;
 
-    await supabaseAdmin.rpc('add_charter_advisor', { org_id: organization_id });
+    const { error: advisorError } = await supabaseAdmin.rpc(
+        'add_charter_advisor',
+        { org_id: organization_id },
+    );
+    if (advisorError) {
+        console.error('[APPROVE_ORGANIZATION] advisor failed', advisorError);
+    }
 
     /* send emails  */
     const emailBody =

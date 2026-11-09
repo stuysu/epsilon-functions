@@ -106,11 +106,17 @@ Deno.serve(withCors(async (req: Request) => {
     ) {
         return new Response('Invalid room.', { status: 400 });
     }
+    if (
+        bodyJson.title !== undefined &&
+        (typeof bodyJson.title !== 'string' || !bodyJson.title.trim())
+    ) {
+        return new Response('Missing meeting title.', { status: 400 });
+    }
     const advisorOmitted = bodyJson.advisor === undefined;
     const advisor = bodyJson.advisor?.trim() || null;
 
     const body: BodyType = {
-        title: bodyJson.title,
+        title: bodyJson.title?.trim(),
         description: bodyJson.description,
         room_id: bodyJson.room_id,
         start_time: bodyJson.start_time,
@@ -150,7 +156,7 @@ Deno.serve(withCors(async (req: Request) => {
                 .eq('organization_id', organizationId)
                 .eq('user_id', verifiedUsers[0].id)
                 .eq('active', true)
-                .in('role', ['ADMIN', 'CREATOR'])
+                .in('role', ['ADMIN', 'CREATOR', 'ADVISOR'])
                 .limit(1);
         if (membershipError) {
             return new Response('Failed to check permissions.', {
@@ -159,7 +165,7 @@ Deno.serve(withCors(async (req: Request) => {
         }
         if (!adminMembership || !adminMembership.length) {
             return new Response(
-                'You must be an admin of this organization to edit its meetings.',
+                'You must be a leader or advisor of this organization to edit its meetings.',
                 { status: 403 },
             );
         }
@@ -237,13 +243,21 @@ Deno.serve(withCors(async (req: Request) => {
             approval_required: boolean;
         };
     };
+    /* permissions were checked above; direct leader updates are blocked by RLS */
     const { data: updateMeetingData, error: updateMeetingError } =
-        await supabaseClient.from('meetings')
+        await supabaseAdmin.from('meetings')
             .update(body)
             .eq('id', bodyJson.id)
             .select(returnSelect)
             .returns<rtyp[]>();
 
+    /* another booking for this room landed first */
+    if (updateMeetingError?.code === '23P01') {
+        return new Response(
+            'That room was just booked for this time. Choose another room or time.',
+            { status: 409 },
+        );
+    }
     if (updateMeetingError || !updateMeetingData || !updateMeetingData.length) {
         return new Response('Could not update meeting.', { status: 500 });
     }
