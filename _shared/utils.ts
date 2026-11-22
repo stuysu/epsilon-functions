@@ -25,6 +25,7 @@ const ERR_MEETING_TIME = 'Invalid meeting time or length.';
 const ERR_MAX_ROOMS =
     'Due to high demand, only 5 future in-person meetings can be booked per club.';
 const ERR_ROOM = 'Invalid meeting room.';
+const ERR_ROOM_BLOCKED = 'This room is blocked on that day.';
 const ERR = 'Malformed request. Contact it@stuysu.org.';
 
 const ERR_ADVISOR_REQUIRED =
@@ -90,6 +91,36 @@ export const checkAdvisor = async (
     }
 
     return { advisor: requested, error: ERR_ADVISOR_INVALID };
+};
+
+/* New York dates, as YYYY-MM-DD */
+const newYorkDate = (value: Date) => {
+    const parts = Object.fromEntries(
+        new Intl.DateTimeFormat('en-US', {
+            timeZone: 'America/New_York',
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+        }).formatToParts(value).map((part) => [part.type, part.value]),
+    );
+    return `${parts.year}-${parts.month}-${parts.day}`;
+};
+
+/* null when the lookup fails */
+export const isRoomBlocked = async (
+    room_id: number,
+    start: Date,
+    end: Date,
+) => {
+    const { data, error } = await supabaseAdmin
+        .from('room_blocks')
+        .select('room_id')
+        .eq('room_id', room_id)
+        .gte('blocked_on', newYorkDate(start))
+        .lte('blocked_on', newYorkDate(new Date(end.getTime() - 1)))
+        .limit(1);
+    if (error) return null;
+    return data.length > 0;
 };
 
 export const isSiteAdmin = async (email?: string | null) => {
@@ -198,6 +229,31 @@ export const isValidMeeting = async (
             return ERR_ROOM;
         }
 
+        /* a meeting already in the room keeps it while it stays on the same
+        days (Force Reserve bookings, or meetings that started before the block) */
+        let keepsRoom = false;
+        if (meeting_id) {
+            const { data: existing } = await supabaseAdmin
+                .from('meetings')
+                .select('room_id, start_time, end_time')
+                .eq('id', meeting_id)
+                .maybeSingle();
+            keepsRoom = !!existing &&
+                Number(existing.room_id) === Number(room_id) &&
+                newYorkDate(start) >=
+                    newYorkDate(new Date(existing.start_time)) &&
+                newYorkDate(new Date(end.getTime() - 1)) <=
+                    newYorkDate(
+                        new Date(new Date(existing.end_time).getTime() - 1),
+                    );
+        }
+
+        if (!keepsRoom) {
+            const blocked = await isRoomBlocked(Number(room_id), start, end);
+            if (blocked === null) return ERR + ' (Code: BAD_BLOCKS)';
+            if (blocked) return ERR_ROOM_BLOCKED;
+        }
+
         // check if room is available on that day of week
         const daysOfWeek = [
             'SUNDAY',
@@ -254,7 +310,7 @@ export const sendOrgEmail = async (
     notifyFaculty?: boolean,
     onlyAdmin?: boolean,
     onlyFaculty?: boolean,
-) => {
+): Promise<boolean> => {
     const { data: membershipsData, error: membershipsError } =
         await supabaseAdmin
             .from('memberships')
@@ -283,7 +339,8 @@ export const sendOrgEmail = async (
                     : 'none'
             }`,
         );
-        return;
+        // no members is nothing to send, not a failure
+        return !membershipsError;
     }
     console.log(
         `[sendOrgEmail] org=${orgId} memberships=${membershipsData.length}`,
@@ -380,10 +437,12 @@ export const sendOrgEmail = async (
                 '[sendOrgEmail] sendMail failed',
                 (e as Error)?.message || e,
             );
+            return false;
         }
     } else {
         console.log('[sendOrgEmail] No recipients; skipping send.');
     }
+    return true;
 };
 
 export const sendMemberEmail = async (

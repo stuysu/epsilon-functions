@@ -251,6 +251,12 @@ Deno.serve(withCors(async (req: Request) => {
             .select(returnSelect)
             .returns<rtyp[]>();
 
+    /* the room was blocked after the check above */
+    if (updateMeetingError?.code === 'RB001') {
+        return new Response('This room is blocked on that day.', {
+            status: 409,
+        });
+    }
     /* another booking for this room landed first */
     if (updateMeetingError?.code === '23P01') {
         return new Response(
