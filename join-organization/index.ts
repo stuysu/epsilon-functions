@@ -1,5 +1,6 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import { sendOrgEmail } from '../_shared/utils.ts';
+import { sendOrgEmail, unlockOrganizationIfReady } from '../_shared/utils.ts';
+import supabaseAdmin from '../_shared/supabaseAdmin.ts';
 import corsHeaders, { withCors } from '../_shared/cors.ts';
 import { footer } from '../_shared/strings.ts';
 import { readJson } from '../_shared/http.ts';
@@ -21,7 +22,7 @@ Deno.serve(withCors(async (req: Request) => {
     const {
         organization_id,
     }: BodyType = bodyJson;
-   
+
     if (!organization_id) {
         return new Response('Missing field', { status: 400 });
     }
@@ -84,11 +85,6 @@ Deno.serve(withCors(async (req: Request) => {
             status: 403,
         });
     }
-    if (!orgData[0].joinable) {
-        return new Response('This organization is not joinable.', {
-            status: 403,
-        });
-    }
 
     /* attempt to join organization (table constraint prevents duplicate members already) */
     type joinOrgType = {
@@ -105,13 +101,7 @@ Deno.serve(withCors(async (req: Request) => {
             is_faculty: boolean;
         };
     };
-    const { data: joinOrgData, error: joinOrgError } = await supabaseClient
-        .from('memberships')
-        .insert({
-            organization_id,
-            user_id: siteUser.id,
-        })
-        .select(`
+    const membershipSelect = `
             id,
             role,
             role_name,
@@ -124,7 +114,60 @@ Deno.serve(withCors(async (req: Request) => {
                 picture,
                 is_faculty
             )
-        `)
+        `;
+
+    /* an invited user joins right away, as if they accepted the invite */
+    const { data: invite } = await supabaseAdmin
+        .from('organization_invites')
+        .update({ status: 'accepted' })
+        .eq('organization_id', organization_id)
+        .eq('user_id', siteUser.id)
+        .eq('status', 'pending')
+        .select('id')
+        .maybeSingle();
+
+    if (invite) {
+        const { data: membership, error: membershipError } = await supabaseAdmin
+            .from('memberships')
+            .upsert(
+                {
+                    organization_id,
+                    user_id: siteUser.id,
+                    active: true,
+                },
+                { onConflict: 'organization_id,user_id' },
+            )
+            .select(membershipSelect)
+            .returns<joinOrgType[]>();
+
+        if (membershipError || !membership?.length) {
+            console.error('[JOIN_ORG] invited join failed', membershipError);
+            await supabaseAdmin.from('organization_invites')
+                .update({ status: 'pending' })
+                .eq('id', invite.id);
+            return new Response('Error joining organization', { status: 422 });
+        }
+
+        await unlockOrganizationIfReady(organization_id);
+
+        return new Response(JSON.stringify({ ...membership[0] }), {
+            headers: { 'Content-Type': 'application/json' },
+        });
+    }
+
+    if (!orgData[0].joinable) {
+        return new Response('This organization is not joinable.', {
+            status: 403,
+        });
+    }
+
+    const { data: joinOrgData, error: joinOrgError } = await supabaseClient
+        .from('memberships')
+        .insert({
+            organization_id,
+            user_id: siteUser.id,
+        })
+        .select(membershipSelect)
         .returns<joinOrgType[]>();
 
     /* send error if failed to join organization */
