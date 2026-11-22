@@ -2,6 +2,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import corsHeaders, { withCors } from '../_shared/cors.ts';
 import { sendOrgEmail } from '../_shared/utils.ts';
 import { dbErrorStatus, readJson } from '../_shared/http.ts';
+import { markdownToText } from '../_shared/markdown.ts';
 
 type BodyType = {
     organization_id: number;
@@ -75,7 +76,7 @@ Deno.serve(withCors(async (req: Request) => {
 
     /* email all members of organization */
 
-    const emailText = `${body.title}\n\n${body.description}`;
+    const emailText = `${body.title}\n\n${markdownToText(body.description)}`;
     const emailSubject = `${body.title} | {ORG_NAME}`;
 
     if (bodyJson.silent !== true) {

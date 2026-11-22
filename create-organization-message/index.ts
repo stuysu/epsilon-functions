@@ -3,6 +3,7 @@ import corsHeaders, { withCors } from '../_shared/cors.ts';
 import Transport from '../_shared/emailTransport.ts';
 import { footer } from '../_shared/strings.ts';
 import { dbErrorStatus, readJson } from '../_shared/http.ts';
+import { markdownToText } from '../_shared/markdown.ts';
 
 type BodyType = {
     organization_id: number;
@@ -139,7 +140,7 @@ Deno.serve(withCors(async (req: Request) => {
 
 There is a new message for ${orgName}.
 
-${siteUser.first_name} ${siteUser.last_name}: ${content}
+${siteUser.first_name} ${siteUser.last_name}: ${markdownToText(content)}
 
 You can view this message at ${
             Deno.env.get('SITE_URL')
