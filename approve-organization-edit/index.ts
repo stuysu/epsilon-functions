@@ -79,7 +79,7 @@ Deno.serve(withCors(async (req: Request) => {
     /* the edit must exist and belong to this organization */
     const { data: pendingEdit, error: editFetchError } = await supabaseClient
         .from('organizationedits')
-        .select('id')
+        .select('*')
         .eq('id', edit_id)
         .eq('organization_id', organization_id)
         .maybeSingle();
@@ -107,7 +107,34 @@ Deno.serve(withCors(async (req: Request) => {
         );
     }
 
-    const cleanedFields = cleanCharter(updated_fields);
+    /* apply only what the request still asks for: a field the club saved
+       directly since then is no longer pending, and one they changed again
+       needs a fresh look */
+    const stillPending: { [field: string]: any } = {};
+    for (const [field, value] of Object.entries(updated_fields)) {
+        const current = pendingEdit[field];
+        if (field !== 'fair' && (current === null || current === undefined)) {
+            continue;
+        }
+        if (JSON.stringify(current) !== JSON.stringify(value)) {
+            return new Response(
+                'This request changed after you opened it. Reload to see the latest version.',
+                { status: 409 },
+            );
+        }
+        stillPending[field] = value;
+    }
+
+    /* everything in it was saved directly already */
+    if (!Object.keys(stillPending).some((field) => field !== 'fair')) {
+        await supabaseClient.from('organizationedits').delete()
+            .eq('id', edit_id);
+        return new Response(JSON.stringify({ success: true }), {
+            headers: { 'Content-Type': 'application/json' },
+        });
+    }
+
+    const cleanedFields = cleanCharter(stillPending);
 
     const problems = validateCharter(cleanedFields, false);
     if (problems.length) {

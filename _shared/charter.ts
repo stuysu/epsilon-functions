@@ -191,6 +191,19 @@ export const EDITABLE_CHARTER_FIELDS = [
     'faculty_email',
 ];
 
+/* fields club leaders save without review (update-charter); the rest of
+   EDITABLE_CHARTER_FIELDS still go through organizationedits */
+export const DIRECT_CHARTER_FIELDS = [
+    'url',
+    'socials',
+    'meeting_schedule',
+    'faculty_email',
+    'commitment_level',
+    'meeting_days',
+    'tags',
+    'keywords',
+];
+
 const countWords = (value: string) =>
     value.trim() ? value.trim().split(/\s+/).length : 0;
 
