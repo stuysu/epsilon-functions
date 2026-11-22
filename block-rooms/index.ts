@@ -79,7 +79,6 @@ Deno.serve(withCors(async (req: Request) => {
 
     const result = data as {
         blocked: number[];
-        held: number[];
         cancelled: CancelledMeeting[];
     };
 
@@ -89,9 +88,16 @@ Deno.serve(withCors(async (req: Request) => {
     }
 
     const day = datetime(`${date}T12:00:00`).format('MMMM d, YYYY');
-    const cause = note
-        ? `because the room is closed on ${day} for "${note}"`
-        : `because the room is closed on ${day}`;
+    const cause = (meetings: CancelledMeeting[]) => {
+        const closed = new Set(meetings.map((meeting) =>
+                meeting.room_name
+            )).size > 1
+            ? 'the rooms are closed'
+            : 'the room is closed';
+        return note
+            ? `because ${closed} on ${day} for "${note}"`
+            : `because ${closed} on ${day}`;
+    };
 
     /* all at once, so a slow mail server can't time out the later clubs */
     const orgIds = Object.keys(byOrg).map(Number);
@@ -101,7 +107,9 @@ Deno.serve(withCors(async (req: Request) => {
             `{ORG_NAME}: Meeting(s) Cancelled | Epsilon`,
             `Dear {ORG_NAME} member,
 
-This email is to let you know that the following meeting(s) of {ORG_NAME} have been cancelled by administrators ${cause}:
+This email is to let you know that the following meeting(s) of {ORG_NAME} have been cancelled by administrators ${
+                cause(byOrg[orgId])
+            }:
 
 ${
                 byOrg[orgId].map((meeting) =>
@@ -118,7 +126,10 @@ We sincerely apologize for the inconvenience.` + footer,
             false,
         )
     ));
-    const unemailed = orgIds.filter((_, i) => sent[i].status === 'rejected');
+    const unemailed = orgIds.filter((_, i) => {
+        const result = sent[i];
+        return result.status === 'rejected' || !result.value;
+    });
     if (unemailed.length) {
         console.error('Failed to email organizations', unemailed);
     }
@@ -126,7 +137,6 @@ We sincerely apologize for the inconvenience.` + footer,
     return new Response(
         JSON.stringify({
             blocked: result.blocked,
-            held: result.held,
             cancelled: result.cancelled.length,
             unemailed,
         }),

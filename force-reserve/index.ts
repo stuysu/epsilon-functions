@@ -166,39 +166,6 @@ Deno.serve(withCors(async (req: Request) => {
         .map((meeting) => meeting.meeting_id);
 
     if (conflictingMeetingIds.length) {
-        const { data: heldMeetings, error: heldError } = await supabaseClient
-            .from('meetings')
-            .select(`
-                id,
-                organizations!inner (
-                    name,
-                    state
-                )
-            `)
-            .in('id', conflictingMeetingIds)
-            .eq('organizations.state', 'ADMIN')
-            .returns<
-                { id: number; organizations: { name: string } }[]
-            >();
-
-        if (heldError || !heldMeetings) {
-            return new Response('Failed to fetch meetings', { status: 500 });
-        }
-
-        /* an admin club holds the room: refuse before cancelling or emailing anyone */
-        if (heldMeetings.length) {
-            const holders = [
-                ...new Set(
-                    heldMeetings.map((meeting) => meeting.organizations.name),
-                ),
-            ].join(', ');
-
-            return new Response(
-                `This room is held by an admin club (${holders}) during that time, so it was not reserved.`,
-                { status: 409 },
-            );
-        }
-
         const { data: removedMeetings, error: orgError } = await supabaseClient
             .from('meetings')
             .delete()

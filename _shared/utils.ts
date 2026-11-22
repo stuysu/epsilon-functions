@@ -94,10 +94,17 @@ export const checkAdvisor = async (
 };
 
 /* New York dates, as YYYY-MM-DD */
-const newYorkDate = (value: Date) =>
-    new Intl.DateTimeFormat('en-CA', {
-        timeZone: 'America/New_York',
-    }).format(value);
+const newYorkDate = (value: Date) => {
+    const parts = Object.fromEntries(
+        new Intl.DateTimeFormat('en-US', {
+            timeZone: 'America/New_York',
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+        }).formatToParts(value).map((part) => [part.type, part.value]),
+    );
+    return `${parts.year}-${parts.month}-${parts.day}`;
+};
 
 /* null when the lookup fails */
 export const isRoomBlocked = async (
@@ -303,7 +310,7 @@ export const sendOrgEmail = async (
     notifyFaculty?: boolean,
     onlyAdmin?: boolean,
     onlyFaculty?: boolean,
-) => {
+): Promise<boolean> => {
     const { data: membershipsData, error: membershipsError } =
         await supabaseAdmin
             .from('memberships')
@@ -332,7 +339,8 @@ export const sendOrgEmail = async (
                     : 'none'
             }`,
         );
-        return;
+        // no members is nothing to send, not a failure
+        return !membershipsError;
     }
     console.log(
         `[sendOrgEmail] org=${orgId} memberships=${membershipsData.length}`,
@@ -429,10 +437,12 @@ export const sendOrgEmail = async (
                 '[sendOrgEmail] sendMail failed',
                 (e as Error)?.message || e,
             );
+            return false;
         }
     } else {
         console.log('[sendOrgEmail] No recipients; skipping send.');
     }
+    return true;
 };
 
 export const sendMemberEmail = async (
