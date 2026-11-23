@@ -1,9 +1,15 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import corsHeaders, { withCors } from '../_shared/cors.ts';
 import Transport from '../_shared/emailTransport.ts';
-import { footer } from '../_shared/strings.ts';
+import { escapeHtml, footer } from '../_shared/strings.ts';
 import { dbErrorStatus, readJson } from '../_shared/http.ts';
 import { markdownToText } from '../_shared/markdown.ts';
+import {
+    emailDocument,
+    emailLink,
+    markdownToHtml,
+    textToHtml,
+} from '../_shared/emailHtml.ts';
 
 type BodyType = {
     organization_id: number;
@@ -133,25 +139,42 @@ Deno.serve(withCors(async (req: Request) => {
         return new Response('Failed to email org admins.', { status: 500 });
     }
 
+    const sender = `${siteUser.first_name} ${siteUser.last_name}`;
+    const messageUrl = `${Deno.env.get('SITE_URL')}/${orgUrl}/admin/messages`;
+    const messageHtml = markdownToHtml(content);
+    const messageText = markdownToText(content);
+    const subject = `${orgName}: New Administrator Message | Epsilon`;
+
     for (const admin of orgAdmins) {
         if (admin.users.id === siteUser.id) continue;
 
-        const emailBody = `Hi ${admin.users.first_name}!
+        const greeting = `Hi ${admin.users.first_name}!
 
-There is a new message for ${orgName}.
+There is a new message for ${orgName}.`;
 
-${siteUser.first_name} ${siteUser.last_name}: ${markdownToText(content)}
+        const emailBody = `${greeting}
 
-You can view this message at ${
-            Deno.env.get('SITE_URL')
-        }/${orgUrl}/admin/messages.` + footer;
+${sender}: ${messageText}
+
+You can view this message at ${messageUrl}${footer}`;
+        const emailHtml = emailDocument(
+            `${textToHtml(greeting)}
+<p style="margin:0 0 4px;font-weight:700">${escapeHtml(sender)}:</p>
+<div style="margin:0 0 12px;padding:8px 12px 0;border-left:3px solid #d0d0d0">${messageHtml}</div>
+<p style="margin:0 0 12px">${
+                emailLink(messageUrl, 'View the message on Epsilon')
+            }</p>
+${textToHtml(footer)}`,
+            { title: subject, preview: `${sender}: ${messageText}` },
+        );
 
         /* don't use await here. let this operation perform asynchronously */
         Transport.sendMail({
             from: Deno.env.get('NODEMAILER_FROM')!,
             to: admin.users.email,
-            subject: `${orgName}: New Administrator Message | Epsilon`,
+            subject,
             text: emailBody,
+            html: emailHtml,
         })
             .catch((error: unknown) => {
                 if (error instanceof Error) {

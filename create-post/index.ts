@@ -3,6 +3,11 @@ import corsHeaders, { withCors } from '../_shared/cors.ts';
 import { sendOrgEmail } from '../_shared/utils.ts';
 import { dbErrorStatus, readJson } from '../_shared/http.ts';
 import { markdownToText } from '../_shared/markdown.ts';
+import {
+    emailDocument,
+    emailTitle,
+    markdownToHtml,
+} from '../_shared/emailHtml.ts';
 
 type BodyType = {
     organization_id: number;
@@ -76,11 +81,19 @@ Deno.serve(withCors(async (req: Request) => {
 
     /* email all members of organization */
 
-    const emailText = `${body.title}\n\n${markdownToText(body.description)}`;
-    const emailSubject = `${body.title} | {ORG_NAME}`;
-
     if (bodyJson.silent !== true) {
-        await sendOrgEmail(body.organization_id, emailSubject, emailText);
+        const description = markdownToText(body.description);
+        const emailText = `${body.title}\n\n${description}`;
+        const emailSubject = `${body.title} | {ORG_NAME}`;
+        const emailHtml = emailDocument(
+            emailTitle(String(body.title)) +
+                markdownToHtml(body.description, String(body.title)),
+            { title: emailSubject, preview: description },
+        );
+        await sendOrgEmail(body.organization_id, emailSubject, {
+            text: emailText,
+            html: emailHtml,
+        });
     }
 
     return new Response(
