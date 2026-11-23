@@ -6,6 +6,7 @@ import {
 } from '../_shared/utils.ts';
 import corsHeaders, { withCors } from '../_shared/cors.ts';
 import supabaseAdmin from '../_shared/supabaseAdmin.ts';
+import { emailNewAdvisor } from '../_shared/advisorEmail.ts';
 import { footer } from '../_shared/strings.ts';
 
 // import { initOrgCalendar } from '../_shared/google/calendar.ts'; REMOVE FOR NOW: DOESN'T WORK IN PRODUCTION
@@ -89,6 +90,7 @@ Deno.serve(withCors(async (req: Request) => {
 
     type orgTyp = {
         name: string;
+        faculty_email: string | null;
     };
 
     const { count } = await supabaseClient.from('memberships')
@@ -107,7 +109,8 @@ Deno.serve(withCors(async (req: Request) => {
         .eq('id', organization_id)
         .eq('state', 'PENDING')
         .select(`
-            name
+            name,
+            faculty_email
         `)
         .returns<orgTyp[]>();
 
@@ -123,12 +126,17 @@ Deno.serve(withCors(async (req: Request) => {
 
     const approvedOrgName = orgData[0].name;
 
-    const { error: advisorError } = await supabaseAdmin.rpc(
-        'add_charter_advisor',
-        { org_id: organization_id },
-    );
+    const { data: advisorResult, error: advisorError } = await supabaseAdmin
+        .rpc('add_charter_advisor', { org_id: organization_id });
     if (advisorError) {
         console.error('[APPROVE_ORGANIZATION] advisor failed', advisorError);
+    } else if (advisorResult === 'added' && orgData[0].faculty_email) {
+        await emailNewAdvisor(
+            organization_id,
+            orgData[0].faculty_email,
+            (name) =>
+                `${name} named you as its faculty advisor, and its charter has just been approved.`,
+        );
     }
 
     /* send emails  */
