@@ -1,6 +1,6 @@
 import supabaseAdmin from './supabaseAdmin.ts';
 import Transport from './emailTransport.ts';
-import { footer } from './strings.ts';
+import { escapeHtml, footer } from './strings.ts';
 import { datetime } from 'https://deno.land/x/ptera/mod.ts';
 
 const MIN_LENGTH = 30; // minutes
@@ -306,11 +306,14 @@ export const isValidMeeting = async (
 export const sendOrgEmail = async (
     orgId: number,
     subject: string,
-    text: string,
+    body: string | { text: string; html: string },
     notifyFaculty?: boolean,
     onlyAdmin?: boolean,
     onlyFaculty?: boolean,
 ): Promise<boolean> => {
+    let { text, html } = typeof body === 'string'
+        ? { text: body, html: undefined }
+        : body;
     const { data: membershipsData, error: membershipsError } =
         await supabaseAdmin
             .from('memberships')
@@ -416,8 +419,10 @@ export const sendOrgEmail = async (
         recipientEmails.push(member.users.email);
     }
 
-    subject = subject.replace(/{ORG_NAME}/g, orgName);
-    text = text.replace(/{ORG_NAME}/g, orgName);
+    // replacer functions, so a $ in the name isn't read as a pattern
+    subject = subject.replace(/{ORG_NAME}/g, () => orgName);
+    text = text.replace(/{ORG_NAME}/g, () => orgName);
+    html = html?.replace(/{ORG_NAME}/g, () => escapeHtml(orgName));
 
     console.log(
         `[sendOrgEmail] org=${orgId} recipients_after_filters=${recipientEmails.length} onlyAdmin=${!!onlyAdmin} notifyFaculty=${!!notifyFaculty}`,
@@ -430,6 +435,7 @@ export const sendOrgEmail = async (
                 bcc: recipientEmails,
                 subject,
                 text,
+                html,
             });
             console.log('[sendOrgEmail] sendMail OK');
         } catch (e) {
@@ -511,11 +517,11 @@ export const sendMemberEmail = async (
 
     if (!member.allow_notifications) return;
 
-    subject = subject.replace(/{ORG_NAME}/g, member.organizations.name);
-    text = text.replace(/{ORG_NAME}/g, member.organizations.name);
+    subject = subject.replace(/{ORG_NAME}/g, () => member.organizations.name);
+    text = text.replace(/{ORG_NAME}/g, () => member.organizations.name);
 
-    subject = subject.replace(/{FIRST_NAME}/g, member.users.first_name);
-    text = text.replace(/{FIRST_NAME}/g, member.users.first_name);
+    subject = subject.replace(/{FIRST_NAME}/g, () => member.users.first_name);
+    text = text.replace(/{FIRST_NAME}/g, () => member.users.first_name);
 
     try {
         await Transport.sendMail({
