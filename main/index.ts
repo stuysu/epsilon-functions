@@ -29,8 +29,13 @@ const VERIFY_JWT = Deno.env.get('VERIFY_JWT') === 'true';
 const FUNCTIONS_DIR = '/home/deno/functions';
 /* function folders: lowercase letters, digits, - and _ (not _shared) */
 const SERVICE_NAME = /^[a-z0-9][a-z0-9_-]*$/;
-/* calendar apps send no JWT; export-voters checks the vote site's own token */
-const PUBLIC_FUNCTIONS = new Set(['calendar-feed', 'export-voters']);
+/* calendar apps send no JWT; export-voters checks the vote site's own token;
+   fetch-schedule is a public read used outside the site */
+const PUBLIC_FUNCTIONS = new Set([
+    'calendar-feed',
+    'export-voters',
+    'fetch-schedule',
+]);
 /* only the router uses these, so workers don't get them */
 const ROUTER_ONLY_ENV = ['JWT_SECRET', 'SUPABASE_JWKS', 'VERIFY_JWT'];
 
