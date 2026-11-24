@@ -11,8 +11,9 @@ type BodyType = {
 const fail = (message: string, status: number) =>
     new Response(message, { status });
 
-// Adds a faculty advisor for a club admin and emails the advisor. Returns the
-// result of add_organization_advisor ('added', 'no_account', ...).
+// Adds a faculty advisor for a club admin, or invites one with no account,
+// and emails them. Returns add_organization_advisor's result ('added',
+// 'invited', ...) and whether the email went out.
 Deno.serve(withCors(async (req: Request) => {
     const body: BodyType | null = await readJson(req);
     if (!body) return fail('Invalid JSON body.', 400);
@@ -40,21 +41,20 @@ Deno.serve(withCors(async (req: Request) => {
             : fail('Failed to add advisor.', 500);
     }
 
-    if (result === 'added') {
-        const adder = [siteUser.first_name, siteUser.last_name]
-            .filter(Boolean)
-            .join(' ');
-        await emailNewAdvisor(
-            organization_id,
-            advisor_email,
-            (name) =>
-                `${
-                    adder || 'A club leader'
-                } added you as the faculty advisor of ${name}.`,
-        );
-    }
+    const adder = [siteUser.first_name, siteUser.last_name]
+        .filter(Boolean)
+        .join(' ') || 'A club leader';
+    const emailed = await emailNewAdvisor(
+        organization_id,
+        advisor_email,
+        result,
+        (name) =>
+            result === 'added'
+                ? `${adder} added you as the faculty advisor of ${name}.`
+                : `${adder} named you as the faculty advisor of ${name}.`,
+    );
 
-    return new Response(JSON.stringify({ result }), {
+    return new Response(JSON.stringify({ result, emailed }), {
         headers: { 'Content-Type': 'application/json' },
     });
 }));

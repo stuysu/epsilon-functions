@@ -6,7 +6,6 @@ import {
     isSiteAdmin,
     isValidMeeting,
     MEETING_CAP_CODE,
-    roomRequiresAdvisor,
     sendOrgEmail,
 } from '../_shared/utils.ts';
 import supabaseAdmin from '../_shared/supabaseAdmin.ts';
@@ -27,7 +26,6 @@ type BodyType = {
     start_time: string;
     end_time: string;
     is_public: boolean;
-    notify_faculty?: boolean;
     advisor?: string | null;
 };
 
@@ -88,7 +86,6 @@ Deno.serve(withCors(async (req: Request) => {
         start_time: bodyJson.start_time,
         end_time: bodyJson.end_time,
         is_public: bodyJson.is_public,
-        notify_faculty: bodyJson.notify_faculty,
         advisor: advisor,
     };
 
@@ -215,27 +212,15 @@ Deno.serve(withCors(async (req: Request) => {
 
     const emailSubject = `{ORG_NAME} scheduled a meeting | Epsilon`;
 
-    const emailFaculty = body.notify_faculty === true ||
-        roomRequiresAdvisor(createMeetingData[0].rooms);
-
-    let sent = true;
-    if (bodyJson.silent !== true) {
-        sent = await sendOrgEmail(
-            body.organization_id,
-            emailSubject,
-            emailText,
-            emailFaculty,
-        );
-    } else if (emailFaculty) {
-        sent = await sendOrgEmail(
-            body.organization_id,
-            emailSubject,
-            emailText,
-            true,
-            false,
-            true,
-        );
-    }
+    // faculty always hear about meetings; silent only skips members
+    const sent = await sendOrgEmail(
+        body.organization_id,
+        emailSubject,
+        emailText,
+        true,
+        false,
+        bodyJson.silent === true,
+    );
     if (!sent) {
         console.error(
             `[create-meeting] email failed for meeting ${

@@ -109,10 +109,11 @@ Deno.serve(withCors(async (req: Request) => {
         .rpc('add_charter_advisor', { org_id: organization_id });
     if (advisorError) {
         console.error('[APPROVE_ORGANIZATION] advisor failed', advisorError);
-    } else if (advisorResult === 'added' && orgData[0].faculty_email) {
+    } else if (orgData[0].faculty_email) {
         await emailNewAdvisor(
             organization_id,
             orgData[0].faculty_email,
+            advisorResult,
             (name) =>
                 `${name} named you as its faculty advisor, and its charter has just been approved.`,
         );
