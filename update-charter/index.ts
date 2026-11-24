@@ -2,7 +2,7 @@ import { isSiteAdmin } from '../_shared/utils.ts';
 import { withCors } from '../_shared/cors.ts';
 import { getCaller } from '../_shared/auth.ts';
 import supabaseAdmin from '../_shared/supabaseAdmin.ts';
-import { emailNewAdvisor } from '../_shared/advisorEmail.ts';
+import { emailNewAdvisor, sameEmail } from '../_shared/advisorEmail.ts';
 import {
     cleanCharter,
     DIRECT_CHARTER_FIELDS,
@@ -234,7 +234,7 @@ Deno.serve(withCors(async (req: Request) => {
 
     if (
         'faculty_email' in fields &&
-        fields.faculty_email !== organization.faculty_email
+        !sameEmail(fields.faculty_email, organization.faculty_email)
     ) {
         const { data: advisorResult, error: advisorError } = await supabaseAdmin
             .rpc('add_charter_advisor', {
@@ -242,10 +242,11 @@ Deno.serve(withCors(async (req: Request) => {
             });
         if (advisorError) {
             console.error('[UPDATE_CHARTER] advisor failed', advisorError);
-        } else if (advisorResult === 'added' && saved.faculty_email) {
+        } else if (saved.faculty_email) {
             await emailNewAdvisor(
                 organizationId,
                 saved.faculty_email,
+                advisorResult,
                 (name) =>
                     `${name} updated its charter to name you as its faculty advisor.`,
             );

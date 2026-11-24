@@ -93,10 +93,19 @@ Deno.serve(withCors(async (req: Request) => {
 
     const emailSubject = `{ORG_NAME} canceled a meeting | Epsilon`;
 
+    /* faculty always hear about cancellations, like new meetings; silent
+       only skips members, and nobody is told about ones already over */
     const oldOrgId = oldMeetingData[0].organization_id;
     if (
-        bodyJson.silent !== true &&
-        !await sendOrgEmail(oldOrgId, emailSubject, emailText)
+        new Date(oldMeetingData[0].end_time) > new Date() &&
+        !await sendOrgEmail(
+            oldOrgId,
+            emailSubject,
+            emailText,
+            true,
+            false,
+            bodyJson.silent === true,
+        )
     ) {
         console.error(`[delete-meeting] email failed for meeting ${body.id}`);
     }

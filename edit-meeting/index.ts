@@ -7,7 +7,6 @@ import {
     isValidMeeting,
     MEETING_CAP_CODE,
     type PastPolicy,
-    roomRequiresAdvisor,
     sendOrgEmail,
 } from '../_shared/utils.ts';
 import supabaseAdmin from '../_shared/supabaseAdmin.ts';
@@ -53,7 +52,7 @@ Deno.serve(withCors(async (req: Request) => {
     if (caller instanceof Response) return caller;
     const { client: supabaseClient, authUser: user, user: siteUser } = caller;
 
-    /* bodyJson here also includes: notify-faculty and id <- meeting id */
+    /* bodyJson here also includes: id <- meeting id, silent */
     const bodyJson = await readJson(req);
     if (!bodyJson) {
         return new Response('Invalid request body.', { status: 400 });
@@ -106,7 +105,9 @@ Deno.serve(withCors(async (req: Request) => {
     };
 
     const { data: existingMeeting } = await supabaseClient.from('meetings')
-        .select('start_time, end_time, advisor, room_id, organization_id')
+        .select(
+            'title, description, is_public, start_time, end_time, advisor, room_id, organization_id',
+        )
         .eq('id', bodyJson.id)
         .maybeSingle();
 
@@ -276,31 +277,28 @@ Deno.serve(withCors(async (req: Request) => {
 
     const emailSubject = `{ORG_NAME} updated a meeting | Epsilon`;
 
-    const movedToAdvisorRoom =
-        roomRequiresAdvisor(updateMeetingData[0].rooms) &&
-        updateMeetingData[0].rooms.id !== existingMeeting.room_id;
+    /* nothing people would notice changed, or it's already over: no email */
+    const updated = updateMeetingData[0];
+    const visibleChange = updated.title !== existingMeeting.title ||
+        updated.description !== existingMeeting.description ||
+        updated.is_public !== existingMeeting.is_public ||
+        (updated.advisor ?? null) !== (existingMeeting.advisor ?? null) ||
+        (updated.rooms?.id ?? null) !== (existingMeeting.room_id ?? null) ||
+        new Date(updated.start_time).getTime() !==
+            new Date(existingMeeting.start_time).getTime() ||
+        new Date(updated.end_time).getTime() !==
+            new Date(existingMeeting.end_time).getTime();
+    const ended = new Date(updated.end_time) <= new Date();
 
-    const emailFaculty = bodyJson.notify_faculty === true ||
-        movedToAdvisorRoom;
-
-    let sent = true;
-    if (bodyJson.silent !== true) {
-        sent = await sendOrgEmail(
-            updateMeetingData[0].organization_id,
-            emailSubject,
-            emailText,
-            emailFaculty,
-        );
-    } else if (emailFaculty) {
-        sent = await sendOrgEmail(
-            updateMeetingData[0].organization_id,
-            emailSubject,
-            emailText,
-            true,
-            false,
-            true,
-        );
-    }
+    // faculty always hear about meetings; silent only skips members
+    const sent = !visibleChange || ended || await sendOrgEmail(
+        updated.organization_id,
+        emailSubject,
+        emailText,
+        true,
+        false,
+        bodyJson.silent === true,
+    );
     if (!sent) {
         console.error(`[edit-meeting] email failed for meeting ${bodyJson.id}`);
     }

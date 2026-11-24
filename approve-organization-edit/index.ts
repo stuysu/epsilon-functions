@@ -2,7 +2,7 @@ import { isSiteAdmin, sendOrgEmail } from '../_shared/utils.ts';
 import { withCors } from '../_shared/cors.ts';
 import { getCaller } from '../_shared/auth.ts';
 import supabaseAdmin from '../_shared/supabaseAdmin.ts';
-import { emailNewAdvisor } from '../_shared/advisorEmail.ts';
+import { emailNewAdvisor, sameEmail } from '../_shared/advisorEmail.ts';
 import { footer, IT_EMAIL } from '../_shared/strings.ts';
 import {
     cleanCharter,
@@ -139,9 +139,9 @@ Deno.serve(withCors(async (req: Request) => {
             { status: 400 },
         );
     }
-    const { data: oldOrg } = changesPicture
+    const { data: oldOrg } = changesPicture || 'faculty_email' in cleanedFields
         ? await supabaseClient.from('organizations')
-            .select('picture')
+            .select('picture, faculty_email')
             .eq('id', organization_id)
             .maybeSingle()
         : { data: null };
@@ -194,20 +194,21 @@ Deno.serve(withCors(async (req: Request) => {
         },
     });
 
-    if ('faculty_email' in cleanedFields) {
+    if (
+        'faculty_email' in cleanedFields &&
+        !sameEmail(cleanedFields.faculty_email, oldOrg?.faculty_email)
+    ) {
         const { data: advisorResult, error: advisorError } = await supabaseAdmin
             .rpc('add_charter_advisor', {
                 org_id: organization_id,
             });
         if (advisorError) {
             console.error('[APPROVE_EDIT] advisor failed', advisorError);
-        } else if (
-            advisorResult === 'added' &&
-            typeof cleanedFields.faculty_email === 'string'
-        ) {
+        } else if (typeof cleanedFields.faculty_email === 'string') {
             await emailNewAdvisor(
                 organization_id,
                 cleanedFields.faculty_email,
+                advisorResult,
                 (name) =>
                     `${name} updated its charter to name you as its faculty advisor.`,
             );
