@@ -1,6 +1,6 @@
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { isSiteAdmin } from '../_shared/utils.ts';
-import corsHeaders, { withCors } from '../_shared/cors.ts';
+import { withCors } from '../_shared/cors.ts';
+import { getCaller } from '../_shared/auth.ts';
 import supabaseAdmin from '../_shared/supabaseAdmin.ts';
 import { emailNewAdvisor } from '../_shared/advisorEmail.ts';
 import {
@@ -9,61 +9,66 @@ import {
     EDITABLE_CHARTER_FIELDS,
     RESERVED_PATHS,
     validateCharter,
+    WEEKDAYS,
 } from '../_shared/charter.ts';
-import { dbErrorStatus, readJson } from '../_shared/http.ts';
-
-const WEEKDAYS = ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY'];
+import { dbErrorStatus, isId, readJson } from '../_shared/http.ts';
+import {
+    type ClubPicture,
+    PICTURE_PROBLEM,
+    readClubPicture,
+    removeClubPicture,
+    uploadClubPicture,
+} from '../_shared/picture.ts';
 
 /* clubs in these states can save some charter fields without review */
 const DIRECT_STATES = ['UNLOCKED', 'ADMIN'];
+/* charters still in review (or sent back) save every charter field */
+const REVIEW_STATES = ['PENDING', 'REJECTED'];
+
+/* JSON, or multipart with the JSON in `body` and a new `picture` file */
+const readRequest = async (
+    req: Request,
+): Promise<{ body: unknown; picture: File | null } | null> => {
+    const type = req.headers.get('content-type') ?? '';
+    if (!type.startsWith('multipart/form-data')) {
+        return { body: await readJson(req), picture: null };
+    }
+    try {
+        const form = await req.formData();
+        const body = form.get('body');
+        const picture = form.get('picture');
+        if (typeof body !== 'string') return null;
+        if (picture !== null && !(picture instanceof File)) return null;
+        return { body: JSON.parse(body), picture };
+    } catch {
+        return null;
+    }
+};
 
 Deno.serve(withCors(async (req: Request) => {
-    if (req.method === 'OPTIONS') {
-        return new Response('ok', { headers: corsHeaders });
-    }
+    const caller = await getCaller(req);
+    if (caller instanceof Response) return caller;
+    const email = caller.authUser.email;
 
-    const authHeader = req.headers.get('Authorization');
-    const jwt = authHeader?.split(' ')[1];
-    if (!authHeader || !jwt) {
-        return new Response('Not signed in.', { status: 401 });
-    }
-    const supabaseClient = createClient(
-        Deno.env.get('SUPABASE_URL') ?? '',
-        Deno.env.get('SUPABASE_ANON_KEY') ?? '',
-        { global: { headers: { Authorization: authHeader } } },
-    );
-    const { data: userData } = await supabaseClient.auth.getUser(jwt);
-    const email = userData?.user?.email;
-    if (!email) {
-        return new Response('Not signed in.', { status: 401 });
-    }
-
-    const body = await readJson(req);
+    const request = await readRequest(req);
+    // deno-lint-ignore no-explicit-any
+    const body = request?.body as any;
     const organizationId = body?.organization_id;
-    const changes = body?.changes;
-    if (!Number.isInteger(organizationId)) {
+    const changes = body?.changes ?? {};
+    const pictureFile = request?.picture ?? null;
+    if (!isId(organizationId)) {
         return new Response('Invalid organization.', { status: 400 });
     }
     if (
-        !changes || typeof changes !== 'object' || Array.isArray(changes) ||
-        !Object.keys(changes).length
+        typeof changes !== 'object' || Array.isArray(changes) ||
+        (!Object.keys(changes).length && !pictureFile)
     ) {
         return new Response('Nothing to save.', { status: 400 });
     }
 
-    const reviewed = Object.keys(changes).filter((field) =>
-        !DIRECT_CHARTER_FIELDS.includes(field)
-    );
-    if (reviewed.length) {
-        return new Response(
-            `Changes to ${reviewed.join(', ')} must be reviewed.`,
-            { status: 400 },
-        );
-    }
-
     const { data: organization, error: orgError } = await supabaseAdmin
         .from('organizations')
-        .select('id, url, state, faculty_email')
+        .select('id, name, url, state, faculty_email, picture')
         .eq('id', organizationId)
         .maybeSingle();
     if (orgError) {
@@ -91,9 +96,24 @@ Deno.serve(withCors(async (req: Request) => {
         );
     }
 
-    if (!DIRECT_STATES.includes(organization.state)) {
+    const inReview = REVIEW_STATES.includes(organization.state);
+    if (!inReview && !DIRECT_STATES.includes(organization.state)) {
         return new Response(
             'Charter changes for this Activity must be reviewed.',
+            { status: 400 },
+        );
+    }
+
+    const allowed = inReview ? EDITABLE_CHARTER_FIELDS : DIRECT_CHARTER_FIELDS;
+    const reviewed = Object.keys(changes).filter((field) =>
+        !allowed.includes(field)
+    );
+    if (pictureFile && !inReview) reviewed.push('picture');
+    if (reviewed.length) {
+        return new Response(
+            inReview
+                ? `${reviewed.join(', ')} can't be changed here.`
+                : `Changes to ${reviewed.join(', ')} must be reviewed.`,
             { status: 400 },
         );
     }
@@ -101,6 +121,17 @@ Deno.serve(withCors(async (req: Request) => {
     const fields = cleanCharter(changes);
 
     const problems = validateCharter(fields, false);
+    /* a new picture comes as a file; the field itself can only remove it */
+    if ('picture' in fields) {
+        if (fields.picture !== null && fields.picture !== '') {
+            problems.push('Upload the picture as a file.');
+        } else {
+            fields.picture = null;
+        }
+    }
+    if ('fair' in fields && typeof fields.fair !== 'boolean') {
+        problems.push('Club fair must be yes or no.');
+    }
     if ('url' in fields) {
         if (typeof fields.url !== 'string' || !fields.url) {
             problems.push('URL is required.');
@@ -110,20 +141,21 @@ Deno.serve(withCors(async (req: Request) => {
             );
         }
     }
+    /* validateCharter checks the days themselves */
     if ('meeting_days' in fields) {
         const days = fields.meeting_days;
-        if (
-            !Array.isArray(days) || !days.length ||
-            !days.every((day: unknown) =>
-                typeof day === 'string' && WEEKDAYS.includes(day)
-            )
-        ) {
+        if (days === null || (Array.isArray(days) && !days.length)) {
             problems.push(
                 'Pick at least one meeting day from Monday to Friday.',
             );
-        } else {
+        } else if (Array.isArray(days)) {
             fields.meeting_days = WEEKDAYS.filter((day) => days.includes(day));
         }
+    }
+    let picture: ClubPicture | null = null;
+    if (pictureFile) {
+        picture = await readClubPicture(pictureFile);
+        if (!picture) problems.push(PICTURE_PROBLEM);
     }
     if (problems.length) {
         return new Response(problems.join(' '), { status: 400 });
@@ -142,6 +174,31 @@ Deno.serve(withCors(async (req: Request) => {
             return new Response('This URL is already in use.', { status: 400 });
         }
     }
+    if (typeof fields.name === 'string' && fields.name !== organization.name) {
+        const { data: taken } = await supabaseAdmin.from('organizations')
+            .select('id').ilike('name', fields.name).neq('id', organizationId)
+            .limit(1);
+        if (taken?.length) {
+            return new Response('This name is already in use.', {
+                status: 400,
+            });
+        }
+    }
+
+    let uploaded: { path: string; url: string } | null = null;
+    if (picture) {
+        uploaded = await uploadClubPicture(
+            organizationId,
+            fields.url ?? organization.url,
+            picture,
+        );
+        if (!uploaded) {
+            return new Response('Failed to upload the picture.', {
+                status: 500,
+            });
+        }
+        fields.picture = uploaded.url;
+    }
 
     const { data: saved, error: updateError } = await supabaseAdmin
         .from('organizations')
@@ -150,12 +207,29 @@ Deno.serve(withCors(async (req: Request) => {
         .select('*')
         .single();
     if (updateError || !saved) {
+        if (uploaded) {
+            await supabaseAdmin.storage.from('public-files')
+                .remove([uploaded.path]);
+        }
         return new Response(
             updateError?.code === '23505'
-                ? 'This URL is already in use.'
+                ? updateError.message.includes('name')
+                    ? 'This name is already in use.'
+                    : 'This URL is already in use.'
                 : 'Failed to save changes.',
             { status: updateError ? dbErrorStatus(updateError) : 500 },
         );
+    }
+
+    if ('picture' in fields && organization.picture !== saved.picture) {
+        await removeClubPicture(organizationId, organization.picture);
+    }
+
+    /* approval adds the advisor and clears requests for charters in review */
+    if (inReview) {
+        return new Response(JSON.stringify(saved), {
+            headers: { 'Content-Type': 'application/json' },
+        });
     }
 
     if (

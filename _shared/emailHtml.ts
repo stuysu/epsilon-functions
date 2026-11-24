@@ -1,10 +1,10 @@
 // HTML versions of emails, sent alongside the plain text. Posts and SU chat
 // messages are markdown; it's rendered with inline styles because most mail
 // apps drop <style> blocks.
-// @deno-types="npm:@types/markdown-it@14.1.2"
-import MarkdownIt from 'npm:markdown-it@14.1.0';
-import markPlugin from 'npm:markdown-it-mark@4.0.0';
-import { escapeHtml } from './strings.ts';
+// @deno-types="@types/markdown-it"
+import MarkdownIt from 'markdown-it';
+import markPlugin from 'markdown-it-mark';
+import { escapeHtml, siteUrl } from './strings.ts';
 import { markdownToText, truncate } from './markdown.ts';
 
 // Gmail hides anything past 102 KB behind "View entire message".
@@ -62,7 +62,7 @@ const normalizeHref = (href: string) => {
     if (href.startsWith('//')) return `https:${href}`;
     if (/^[a-z][a-z0-9+.-]*:/i.test(href)) return href;
     if (/^[/#?.]/.test(href)) {
-        const site = Deno.env.get('SITE_URL')?.replace(/\/+$/, '');
+        const site = siteUrl();
         try {
             return site ? new URL(href, `${site}/`).href : href;
         } catch {

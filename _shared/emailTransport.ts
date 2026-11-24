@@ -1,6 +1,6 @@
-import nodemailer from 'npm:nodemailer@6.9.10';
+import nodemailer from 'nodemailer';
 
-const Transport = nodemailer.createTransport({
+const options = {
     host: Deno.env.get('NODEMAILER_HOST')!,
     port: Number(Deno.env.get('NODEMAILER_PORT')!),
     secure: Deno.env.get('NODEMAILER_SECURE')! === 'true',
@@ -11,6 +11,22 @@ const Transport = nodemailer.createTransport({
     connectionTimeout: 5000,
     socketTimeout: 5000,
     greetingTimeout: 5000,
-});
+};
+
+const Transport = nodemailer.createTransport(options);
+
+export type PooledTransport = {
+    sendMail: typeof Transport.sendMail;
+    close: () => void;
+};
+
+/* reuses a few connections for many messages; close() it when done */
+export const pooledTransport = (maxConnections = 5): PooledTransport =>
+    nodemailer.createTransport({
+        ...options,
+        pool: true,
+        maxConnections,
+        maxMessages: 200,
+    });
 
 export default Transport;

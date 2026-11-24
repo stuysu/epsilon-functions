@@ -1,9 +1,13 @@
-// @ts-ignore - JSR imports are resolved natively at runtime by Deno
-import * as jose from "jsr:@panva/jose@6";
+import * as jose from 'jose';
 
-declare const EdgeRuntime: any;
+type UserWorker = { fetch: (req: Request) => Promise<Response> };
+declare const EdgeRuntime: {
+    userWorkers: {
+        create: (options: Record<string, unknown>) => Promise<UserWorker>;
+    };
+};
 
-console.log("main function started");
+console.log('main function started');
 
 function parseJwks(raw: string | undefined): jose.JSONWebKeySet | null {
     if (!raw) return null;
@@ -18,28 +22,50 @@ function parseJwks(raw: string | undefined): jose.JSONWebKeySet | null {
     }
 }
 
-const JWT_SECRET = Deno.env.get("JWT_SECRET");
-const SUPABASE_JWKS = parseJwks(Deno.env.get("SUPABASE_JWKS"));
-const VERIFY_JWT = Deno.env.get("VERIFY_JWT") === "true";
+const JWT_SECRET = Deno.env.get('JWT_SECRET');
+const SUPABASE_JWKS = parseJwks(Deno.env.get('SUPABASE_JWKS'));
+const VERIFY_JWT = Deno.env.get('VERIFY_JWT') === 'true';
+
+const FUNCTIONS_DIR = '/home/deno/functions';
+/* function folders: lowercase letters, digits, - and _ (not _shared) */
+const SERVICE_NAME = /^[a-z0-9][a-z0-9_-]*$/;
+/* calendar apps send no JWT; export-voters checks the vote site's own token */
+const PUBLIC_FUNCTIONS = new Set(['calendar-feed', 'export-voters']);
+/* only the router uses these, so workers don't get them */
+const ROUTER_ONLY_ENV = ['JWT_SECRET', 'SUPABASE_JWKS', 'VERIFY_JWT'];
+
+const json = (body: unknown, status: number) =>
+    new Response(JSON.stringify(body), {
+        status,
+        headers: { 'Content-Type': 'application/json' },
+    });
 
 function getAuthToken(req: Request) {
-    const authHeader = req.headers.get("authorization");
-    if (!authHeader) {
-        throw new Error("Missing authorization header");
-    }
-    const [bearer, token] = authHeader.split(" ");
-    if (bearer !== "Bearer") {
-        throw new Error(`Auth header is not 'Bearer {token}'`);
-    }
-    return token;
+    const [bearer, token] = (req.headers.get('authorization') ?? '').split(
+        ' ',
+    );
+    return bearer === 'Bearer' && token ? token : null;
 }
+
+const isHs256 = (jwt: string) => {
+    try {
+        return jose.decodeProtectedHeader(jwt).alg === 'HS256';
+    } catch {
+        return false;
+    }
+};
 
 async function verifyJWT(jwt: string): Promise<boolean> {
     try {
         if (SUPABASE_JWKS) {
-            const JWKS = jose.createLocalJWKSet(SUPABASE_JWKS);
-            await jose.jwtVerify(jwt, JWKS);
-            return true;
+            try {
+                const JWKS = jose.createLocalJWKSet(SUPABASE_JWKS);
+                await jose.jwtVerify(jwt, JWKS);
+                return true;
+            } catch (err) {
+                /* the anon and service keys are HS256, signed with JWT_SECRET */
+                if (!JWT_SECRET || !isHs256(jwt)) throw err;
+            }
         }
         if (JWT_SECRET) {
             const encoder = new TextEncoder();
@@ -54,49 +80,52 @@ async function verifyJWT(jwt: string): Promise<boolean> {
     }
 }
 
-Deno.serve(async (req: Request) => {
-    if (req.method !== "OPTIONS" && VERIFY_JWT) {
-        try {
-            const token = getAuthToken(req);
-            const isValidJWT = await verifyJWT(token);
+const exists = async (path: string) => {
+    try {
+        return (await Deno.stat(path)).isFile;
+    } catch {
+        return false;
+    }
+};
 
-            if (!isValidJWT) {
-                return new Response(JSON.stringify({ msg: "Invalid JWT" }), {
-                    status: 401,
-                    headers: { "Content-Type": "application/json" },
-                });
-            }
-        } catch (e: any) {
-            console.error(e);
-            return new Response(JSON.stringify({ msg: (e as any).toString() }), {
-                status: 401,
-                headers: { "Content-Type": "application/json" },
-            });
+Deno.serve(async (req: Request) => {
+    const service_name = new URL(req.url).pathname.split('/')[1];
+
+    if (
+        req.method !== 'OPTIONS' && VERIFY_JWT &&
+        !PUBLIC_FUNCTIONS.has(service_name)
+    ) {
+        const token = getAuthToken(req);
+        if (!token) {
+            return json(
+                { msg: 'Missing or invalid authorization header' },
+                401,
+            );
+        }
+        if (!(await verifyJWT(token))) {
+            return json({ msg: 'Invalid JWT' }, 401);
         }
     }
 
-    const url = new URL(req.url);
-    const { pathname } = url;
-    const path_parts = pathname.split("/");
-    const service_name = path_parts[1];
-
-    if (!service_name || service_name === "") {
-        const error = { msg: "missing function name in request" };
-        return new Response(JSON.stringify(error), {
-            status: 400,
-            headers: { "Content-Type": "application/json" },
-        });
+    if (!service_name) {
+        return json({ msg: 'missing function name in request' }, 400);
+    }
+    if (
+        !SERVICE_NAME.test(service_name) || service_name === 'main' ||
+        !(await exists(`${FUNCTIONS_DIR}/${service_name}/index.ts`))
+    ) {
+        return json({ msg: 'Function not found' }, 404);
     }
 
-    const servicePath = `/home/deno/functions/${service_name}`;
+    const servicePath = `${FUNCTIONS_DIR}/${service_name}`;
     console.error(`serving the request with ${servicePath}`);
 
     const memoryLimitMb = 150;
     const workerTimeoutMs = 1 * 60 * 1000;
     const noModuleCache = false;
     const importMapPath = null;
-    const envVarsObj = Deno.env.toObject();
-    const envVars = Object.keys(envVarsObj).map((k) => [k, envVarsObj[k]]);
+    const envVars = Object.entries(Deno.env.toObject())
+        .filter(([name]) => !ROUTER_ONLY_ENV.includes(name));
 
     const cpuTimeSoftLimitMs = 15000;
     const cpuTimeHardLimitMs = 20000;
@@ -113,11 +142,8 @@ Deno.serve(async (req: Request) => {
             cpuTimeHardLimitMs,
         });
         return await worker.fetch(req);
-    } catch (e: any) {
-        const error = { msg: (e as any).toString() };
-        return new Response(JSON.stringify(error), {
-            status: 500,
-            headers: { "Content-Type": "application/json" },
-        });
+    } catch (e) {
+        console.error(`[main] ${service_name} failed`, e);
+        return json({ msg: 'Internal Server Error' }, 500);
     }
 });

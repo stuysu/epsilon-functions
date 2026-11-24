@@ -1,19 +1,15 @@
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { sendOrgEmail, unlockOrganizationIfReady } from '../_shared/utils.ts';
 import supabaseAdmin from '../_shared/supabaseAdmin.ts';
-import corsHeaders, { withCors } from '../_shared/cors.ts';
-import { footer } from '../_shared/strings.ts';
-import { readJson } from '../_shared/http.ts';
+import { withCors } from '../_shared/cors.ts';
+import { getCaller } from '../_shared/auth.ts';
+import { footer, siteUrl } from '../_shared/strings.ts';
+import { isId, readJson } from '../_shared/http.ts';
 
 type BodyType = {
     organization_id: number;
 };
 
 Deno.serve(withCors(async (req: Request) => {
-    if (req.method === 'OPTIONS') {
-        return new Response('ok', { headers: corsHeaders });
-    }
-
     const bodyJson = await readJson(req);
     if (!bodyJson) {
         return new Response('Invalid JSON body.', { status: 400 });
@@ -26,41 +22,13 @@ Deno.serve(withCors(async (req: Request) => {
     if (!organization_id) {
         return new Response('Missing field', { status: 400 });
     }
-
-    const authHeader = req.headers.get('Authorization')!;
-    const supabaseClient = createClient(
-        Deno.env.get('SUPABASE_URL') ?? '',
-        Deno.env.get('SUPABASE_ANON_KEY') ?? '',
-        { global: { headers: { Authorization: authHeader } } },
-    );
-
-    const jwt = authHeader?.split(' ')[1];
-    const { data: userData } = await supabaseClient.auth.getUser(jwt);
-    const user = userData.user;
-
-    /* Failed to fetch supabase user */
-    if (!user) {
-        return new Response('Failed to fetch user.', { status: 401 });
+    if (!isId(organization_id)) {
+        return new Response('Invalid organization.', { status: 400 });
     }
 
-    /* check if user is a verified user. Verified user = the userdata that the site uses */
-    const { data: verifiedUsers, error: verifiedUsersError } =
-        await supabaseClient.from('users')
-            .select('*')
-            .eq('email', user.email);
-
-    if (verifiedUsersError) {
-        return new Response('Failed to fetch users associated email.', {
-            status: 500,
-        });
-    }
-
-    if (!verifiedUsers || !verifiedUsers.length) {
-        return new Response('User is unauthorized.', { status: 401 });
-    }
-
-    // this is the user that is stored in public.users
-    const siteUser = verifiedUsers[0];
+    const caller = await getCaller(req);
+    if (caller instanceof Response) return caller;
+    const { client: supabaseClient, user: siteUser } = caller;
 
     /* check if organization exists */
     const { data: orgData, error: orgExistsError } = await supabaseClient.from(
@@ -80,7 +48,7 @@ Deno.serve(withCors(async (req: Request) => {
     }
 
     /* org must be approved, not punished, and open to join requests */
-    if (['PENDING', 'PUNISHED'].includes(orgData[0].state)) {
+    if (['PENDING', 'PUNISHED', 'REJECTED'].includes(orgData[0].state)) {
         return new Response('This organization cannot be joined right now.', {
             status: 403,
         });
@@ -185,14 +153,24 @@ Deno.serve(withCors(async (req: Request) => {
         
 This email is to let you know that ${siteUser.first_name} ${siteUser.last_name} has requested to join ${
             orgData[0].name
-        }. You can approve their request at ${Deno.env.get('SITE_URL')}/${
+        }. You can approve their request at ${siteUrl()}/${
             orgData[0].url
         }/admin/join-requests` + footer;
     const emailSubject = `${orgData[0].name}: New Join Request | Epsilon`;
 
-    console.log('[JOIN_ORG] calling sendOrgEmail');
-    await sendOrgEmail(organization_id, emailSubject, emailBody, false, true);
-    console.log('[JOIN_ORG] sendOrgEmail done');
+    if (
+        !await sendOrgEmail(
+            organization_id,
+            emailSubject,
+            emailBody,
+            false,
+            true,
+        )
+    ) {
+        console.error(
+            `[join-organization] email failed for org ${organization_id}`,
+        );
+    }
 
     return new Response(
         JSON.stringify({

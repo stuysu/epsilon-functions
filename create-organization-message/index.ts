@@ -1,8 +1,15 @@
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import corsHeaders, { withCors } from '../_shared/cors.ts';
+import { withCors } from '../_shared/cors.ts';
+import { fetchAllRows } from '../_shared/rows.ts';
+import { getCaller } from '../_shared/auth.ts';
 import Transport from '../_shared/emailTransport.ts';
-import { escapeHtml, footer } from '../_shared/strings.ts';
-import { dbErrorStatus, readJson } from '../_shared/http.ts';
+import { escapeHtml, footer, siteUrl } from '../_shared/strings.ts';
+import {
+    dbErrorStatus,
+    isId,
+    LIMITS,
+    readJson,
+    textProblem,
+} from '../_shared/http.ts';
 import { markdownToText } from '../_shared/markdown.ts';
 import {
     emailDocument,
@@ -18,10 +25,6 @@ type BodyType = {
 
 /* accepts JSON */
 Deno.serve(withCors(async (req: Request) => {
-    if (req.method === 'OPTIONS') {
-        return new Response('ok', { headers: corsHeaders });
-    }
-
     const bodyJson = await readJson(req);
     if (!bodyJson) {
         return new Response('Invalid JSON body.', { status: 400 });
@@ -35,40 +38,15 @@ Deno.serve(withCors(async (req: Request) => {
     if (!organization_id || !content) {
         return new Response('Missing field', { status: 400 });
     }
-
-    const authHeader = req.headers.get('Authorization')!;
-    const supabaseClient = createClient(
-        Deno.env.get('SUPABASE_URL') ?? '',
-        Deno.env.get('SUPABASE_ANON_KEY') ?? '',
-        { global: { headers: { Authorization: authHeader } } },
-    );
-
-    const jwt = authHeader?.split(' ')[1];
-    const { data: userData } = await supabaseClient.auth.getUser(jwt);
-    const user = userData.user;
-
-    /* Failed to fetch supabase user */
-    if (!user) {
-        return new Response('Failed to fetch user.', { status: 401 });
+    if (!isId(organization_id)) {
+        return new Response('Invalid organization.', { status: 400 });
     }
+    const contentError = textProblem(content, 'Message', LIMITS.orgMessage);
+    if (contentError) return new Response(contentError, { status: 400 });
 
-    /* check if user is a verified user. Verified user = the userdata that the site uses */
-    const { data: verifiedUsers, error: verifiedUsersError } =
-        await supabaseClient.from('users')
-            .select(`*`)
-            .eq('email', user.email);
-
-    if (verifiedUsersError) {
-        return new Response('Failed to fetch users associated email.', {
-            status: 500,
-        });
-    }
-
-    if (!verifiedUsers || !verifiedUsers.length) {
-        return new Response('User is unauthorized.', { status: 401 });
-    }
-
-    const siteUser = verifiedUsers[0];
+    const caller = await getCaller(req);
+    if (caller instanceof Response) return caller;
+    const { client: supabaseClient, user: siteUser } = caller;
 
     /* create org message */
     type orgTyp = {
@@ -115,39 +93,46 @@ Deno.serve(withCors(async (req: Request) => {
     };
 
     /* email admins of organization except for current user */
-    const { data: orgAdmins, error: orgAdminError } = await supabaseClient.from(
-        'memberships',
-    )
+    const { data: orgAdmins, error: orgAdminError } = await fetchAllRows((
+        from,
+        to,
+    ) => supabaseClient.from('memberships')
         .select(`
-            id,
-            role,
-            users!inner (
                 id,
-                first_name,
-                email
-            )
-        `)
+                role,
+                users!inner (
+                    id,
+                    first_name,
+                    email
+                )
+            `)
         .eq('organization_id', organization_id)
         .eq('active', true)
+        .eq('users.active', true)
         .in('role', ['ADMIN', 'CREATOR'])
-        .returns<orgAdminType[]>();
+        .order('id')
+        .range(from, to)
+        .returns<orgAdminType[]>()
+    );
 
-    /* asynchronously email admins to prevent function from hanging on client */
-
-    if (orgAdminError || !orgAdmins || !orgAdmins.length) {
-        console.log('Unable to email org admins.');
-        return new Response('Failed to email org admins.', { status: 500 });
+    /* the message is saved either way, so a retry would only duplicate it */
+    if (orgAdminError || !orgAdmins.length) {
+        console.error(
+            `[create-organization-message] org=${organization_id} no leaders to email`,
+            orgAdminError?.code ?? '',
+        );
     }
 
     const sender = `${siteUser.first_name} ${siteUser.last_name}`;
-    const messageUrl = `${Deno.env.get('SITE_URL')}/${orgUrl}/admin/messages`;
+    const messageUrl = `${siteUrl()}/${orgUrl}/admin/messages`;
     const messageHtml = markdownToHtml(content);
     const messageText = markdownToText(content);
     const subject = `${orgName}: New Administrator Message | Epsilon`;
 
-    for (const admin of orgAdmins) {
-        if (admin.users.id === siteUser.id) continue;
-
+    const recipients = orgAdmins.filter((admin) =>
+        admin.users.id !== siteUser.id
+    );
+    const sent = await Promise.allSettled(recipients.map((admin) => {
         const greeting = `Hi ${admin.users.first_name}!
 
 There is a new message for ${orgName}.`;
@@ -168,21 +153,20 @@ ${textToHtml(footer)}`,
             { title: subject, preview: `${sender}: ${messageText}` },
         );
 
-        /* don't use await here. let this operation perform asynchronously */
-        Transport.sendMail({
+        return Transport.sendMail({
             from: Deno.env.get('NODEMAILER_FROM')!,
             to: admin.users.email,
             subject,
             text: emailBody,
             html: emailHtml,
-        })
-            .catch((error: unknown) => {
-                if (error instanceof Error) {
-                    console.error(`Failed to send email: ` + error.message);
-                } else {
-                    console.error('Unexpected error', error);
-                }
-            });
+        });
+    }));
+    const failed = sent.filter((result) => result.status === 'rejected');
+    if (failed.length) {
+        console.error(
+            `[create-organization-message] ${failed.length} of ${sent.length} emails failed`,
+            (failed[0] as PromiseRejectedResult).reason?.message,
+        );
     }
 
     // success!

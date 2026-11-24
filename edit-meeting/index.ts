@@ -1,18 +1,26 @@
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import corsHeaders, { withCors } from '../_shared/cors.ts';
-import { roomRequiresAdvisor, sendOrgEmail } from '../_shared/utils.ts';
-
-import { datetime } from 'https://deno.land/x/ptera/mod.ts';
-
+import { withCors } from '../_shared/cors.ts';
 import {
     checkAdvisor,
+    ERR_MAX_ROOMS,
+    isApprovedClub,
     isSiteAdmin,
     isValidMeeting,
+    MEETING_CAP_CODE,
     type PastPolicy,
+    roomRequiresAdvisor,
+    sendOrgEmail,
 } from '../_shared/utils.ts';
-import { footer } from '../_shared/strings.ts';
 import supabaseAdmin from '../_shared/supabaseAdmin.ts';
-
+import {
+    BUSY,
+    dbErrorStatus,
+    isId,
+    LIMITS,
+    readJson,
+    textProblem,
+} from '../_shared/http.ts';
+import { getCaller } from '../_shared/auth.ts';
+import { meetingEmailText } from '../_shared/emails.ts';
 type BodyType = {
     title: string;
     description: string;
@@ -41,56 +49,16 @@ const returnSelect = `
         `;
 
 Deno.serve(withCors(async (req: Request) => {
-    if (req.method === 'OPTIONS') {
-        return new Response('ok', { headers: corsHeaders });
-    }
-
-    const authHeader = req.headers.get('Authorization');
-    const jwt = authHeader?.split(' ')[1];
-    if (!authHeader || !jwt) {
-        return new Response('Not signed in.', { status: 401 });
-    }
-    const supabaseClient = createClient(
-        Deno.env.get('SUPABASE_URL') ?? '',
-        Deno.env.get('SUPABASE_ANON_KEY') ?? '',
-        { global: { headers: { Authorization: authHeader } } },
-    );
-
-    const { data: userData } = await supabaseClient.auth.getUser(jwt);
-    const user = userData?.user;
-
-    /* no signed-in user (missing, expired or anon token) */
-    if (!user) {
-        return new Response('Not signed in.', { status: 401 });
-    }
-
-    /* check if user is a verified user. Verified user = the userdata that the site uses */
-    const { data: verifiedUsers, error: verifiedUsersError } =
-        await supabaseClient.from('users')
-            .select('*')
-            .eq('email', user.email);
-
-    if (verifiedUsersError) {
-        return new Response('Failed to fetch users associated email.', {
-            status: 500,
-        });
-    }
-
-    if (!verifiedUsers || !verifiedUsers.length) {
-        return new Response('User is unauthorized.', { status: 401 });
-    }
+    const caller = await getCaller(req);
+    if (caller instanceof Response) return caller;
+    const { client: supabaseClient, authUser: user, user: siteUser } = caller;
 
     /* bodyJson here also includes: notify-faculty and id <- meeting id */
-    let bodyJson;
-    try {
-        bodyJson = await req.json();
-    } catch {
+    const bodyJson = await readJson(req);
+    if (!bodyJson) {
         return new Response('Invalid request body.', { status: 400 });
     }
-    if (!bodyJson || typeof bodyJson !== 'object') {
-        return new Response('Invalid request body.', { status: 400 });
-    }
-    if (!Number.isInteger(bodyJson.id) || bodyJson.id <= 0) {
+    if (!isId(bodyJson.id)) {
         return new Response('Missing or invalid meeting id.', { status: 400 });
     }
     if (
@@ -102,7 +70,7 @@ Deno.serve(withCors(async (req: Request) => {
 
     if (
         bodyJson.room_id !== undefined && bodyJson.room_id !== null &&
-        !Number.isInteger(bodyJson.room_id)
+        !isId(bodyJson.room_id)
     ) {
         return new Response('Invalid room.', { status: 400 });
     }
@@ -112,6 +80,18 @@ Deno.serve(withCors(async (req: Request) => {
     ) {
         return new Response('Missing meeting title.', { status: 400 });
     }
+    const textError = textProblem(
+        bodyJson.title,
+        'Meeting title',
+        LIMITS.meetingTitle,
+        false,
+    ) ?? textProblem(
+        bodyJson.description,
+        'Meeting description',
+        LIMITS.meetingDescription,
+        false,
+    );
+    if (textError) return new Response(textError, { status: 400 });
     const advisorOmitted = bodyJson.advisor === undefined;
     const advisor = bodyJson.advisor?.trim() || null;
 
@@ -154,7 +134,7 @@ Deno.serve(withCors(async (req: Request) => {
                 .from('memberships')
                 .select('id')
                 .eq('organization_id', organizationId)
-                .eq('user_id', verifiedUsers[0].id)
+                .eq('user_id', siteUser.id)
                 .eq('active', true)
                 .in('role', ['ADMIN', 'CREATOR', 'ADVISOR'])
                 .limit(1);
@@ -166,6 +146,18 @@ Deno.serve(withCors(async (req: Request) => {
         if (!adminMembership || !adminMembership.length) {
             return new Response(
                 'You must be a leader or advisor of this organization to edit its meetings.',
+                { status: 403 },
+            );
+        }
+        const approved = await isApprovedClub(organizationId);
+        if (approved === null) {
+            return new Response('Failed to check the Activity.', {
+                status: 500,
+            });
+        }
+        if (!approved) {
+            return new Response(
+                'Only approved Activities can edit meetings.',
                 { status: 403 },
             );
         }
@@ -222,11 +214,6 @@ Deno.serve(withCors(async (req: Request) => {
         body.advisor = advisorCheck.advisor;
     }
 
-    const { data: oldMeeting } = await supabaseClient.from('meetings')
-        .select('room_id')
-        .eq('id', bodyJson.id)
-        .single();
-
     type rtyp = {
         id: number;
         is_public: boolean;
@@ -257,6 +244,9 @@ Deno.serve(withCors(async (req: Request) => {
             status: 409,
         });
     }
+    if (updateMeetingError?.code === MEETING_CAP_CODE) {
+        return new Response(ERR_MAX_ROOMS, { status: 400 });
+    }
     /* another booking for this room landed first */
     if (updateMeetingError?.code === '23P01') {
         return new Response(
@@ -264,46 +254,45 @@ Deno.serve(withCors(async (req: Request) => {
             { status: 409 },
         );
     }
+    if (updateMeetingError?.code === '40P01') {
+        return new Response(BUSY, { status: 409 });
+    }
+    /* deleted since we read it, e.g. by Force Reserve */
+    if (!updateMeetingError && updateMeetingData?.length === 0) {
+        return new Response('This meeting was cancelled.', { status: 404 });
+    }
     if (updateMeetingError || !updateMeetingData || !updateMeetingData.length) {
-        return new Response('Could not update meeting.', { status: 500 });
+        console.error('[edit-meeting] update failed', updateMeetingError);
+        return new Response('Could not update meeting.', {
+            status: dbErrorStatus(updateMeetingError),
+        });
     }
 
-    /* asynchronously email all members of organization */
-
-    const startTime = datetime(updateMeetingData[0].start_time)
-        .toZonedTime('America/New_York').format('MMMM d, YYYY, h:mm a');
-    const endTime = datetime(updateMeetingData[0].end_time).toZonedTime(
-        'America/New_York',
-    ).format('MMMM d, YYYY, h:mm a');
-
-    const emailText =
-        `You are receiving this email because you are a member of {ORG_NAME}.
-This email is to let you know of an updated meeting. The details of which are below.
-Title: ${body.title}
-Description: ${body.description}
-Start Date: ${startTime} EST
-End Date: ${endTime} EST
-Room: ${updateMeetingData[0].rooms?.name || 'Virtual'}
-Advisor: ${updateMeetingData[0].advisor || 'None'}` + footer;
+    /* email all members of organization */
+    const emailText = meetingEmailText(
+        'This email is to let you know of an updated meeting. The details of which are below.',
+        updateMeetingData[0],
+    );
 
     const emailSubject = `{ORG_NAME} updated a meeting | Epsilon`;
 
     const movedToAdvisorRoom =
         roomRequiresAdvisor(updateMeetingData[0].rooms) &&
-        updateMeetingData[0].rooms.id !== oldMeeting?.room_id;
+        updateMeetingData[0].rooms.id !== existingMeeting.room_id;
 
     const emailFaculty = bodyJson.notify_faculty === true ||
         movedToAdvisorRoom;
 
+    let sent = true;
     if (bodyJson.silent !== true) {
-        await sendOrgEmail(
+        sent = await sendOrgEmail(
             updateMeetingData[0].organization_id,
             emailSubject,
             emailText,
             emailFaculty,
         );
     } else if (emailFaculty) {
-        await sendOrgEmail(
+        sent = await sendOrgEmail(
             updateMeetingData[0].organization_id,
             emailSubject,
             emailText,
@@ -311,6 +300,9 @@ Advisor: ${updateMeetingData[0].advisor || 'None'}` + footer;
             false,
             true,
         );
+    }
+    if (!sent) {
+        console.error(`[edit-meeting] email failed for meeting ${bodyJson.id}`);
     }
 
     return new Response(

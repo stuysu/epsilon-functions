@@ -1,5 +1,5 @@
 import { dbErrorStatus, readJson } from '../_shared/http.ts';
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { createClient } from '@supabase/supabase-js';
 import corsHeaders, { withCors } from '../_shared/cors.ts';
 
 type BodyType = {
@@ -11,10 +11,6 @@ type BodyType = {
 };
 
 Deno.serve(withCors(async (req: Request) => {
-    if (req.method === 'OPTIONS') {
-        return new Response('ok', { headers: corsHeaders });
-    }
-
     const authHeader = req.headers.get('Authorization')!;
     const supabaseClient = createClient(
         Deno.env.get('SUPABASE_URL') ?? '',
@@ -102,15 +98,12 @@ Deno.serve(withCors(async (req: Request) => {
             .select();
 
         if (createUserError) {
+            console.error('[create-user] insert failed', createUserError);
             return new Response(
                 JSON.stringify({
-                    error: 'Error creating user',
-                    details: {
-                        message: createUserError?.message,
-                        hint: createUserError?.hint,
-                        code: createUserError?.code,
-                        details: createUserError?.details,
-                    },
+                    error: createUserError.code === '42501'
+                        ? 'Only site admins can add users.'
+                        : 'Error creating user',
                 }),
                 {
                     status: dbErrorStatus(createUserError),

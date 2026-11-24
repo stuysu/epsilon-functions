@@ -1,8 +1,8 @@
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import corsHeaders, { withCors } from '../_shared/cors.ts';
+import { withCors } from '../_shared/cors.ts';
+import { getCaller } from '../_shared/auth.ts';
 import supabaseAdmin from '../_shared/supabaseAdmin.ts';
 import { unlockOrganizationIfReady } from '../_shared/utils.ts';
-import { readJson } from '../_shared/http.ts';
+import { isId, readJson } from '../_shared/http.ts';
 
 type BodyType = {
     invite_id: number;
@@ -12,46 +12,22 @@ const fail = (message: string, status: number) =>
     new Response(message, { status });
 
 Deno.serve(withCors(async (req: Request) => {
-    if (req.method === 'OPTIONS') {
-        return new Response('ok', { headers: corsHeaders });
-    }
-
     const body: BodyType | null = await readJson(req);
     if (!body) return fail('Invalid JSON body.', 400);
 
     const { invite_id } = body;
-    if (!Number.isInteger(invite_id)) return fail('Missing field', 400);
+    if (!isId(invite_id)) return fail('Missing field', 400);
 
-    const authHeader = req.headers.get('Authorization');
-    if (!authHeader) return fail('User is unauthorized.', 401);
-    const supabaseClient = createClient(
-        Deno.env.get('SUPABASE_URL') ?? '',
-        Deno.env.get('SUPABASE_ANON_KEY') ?? '',
-        { global: { headers: { Authorization: authHeader } } },
-    );
+    const caller = await getCaller(req);
+    if (caller instanceof Response) return caller;
+    const siteUser = caller.user;
 
-    const jwt = authHeader.split(' ')[1];
-    const { data: userData } = await supabaseClient.auth.getUser(jwt);
-    const user = userData.user;
-
-    if (!user) return fail('User is unauthorized.', 401);
-
-    const { data: siteUsers } = await supabaseClient
-        .from('users')
-        .select('id')
-        .eq('email', user.email);
-
-    if (!siteUsers || !siteUsers.length) {
-        return fail('User is unauthorized.', 401);
-    }
-
-    const siteUser = siteUsers[0];
-
-    const { data: invite } = await supabaseAdmin
+    const { data: invite, error: inviteError } = await supabaseAdmin
         .from('organization_invites')
         .select('id, organization_id, user_id, status')
         .eq('id', invite_id)
         .maybeSingle();
+    if (inviteError) return fail('Failed to load the invitation.', 500);
 
     if (
         !invite || invite.user_id !== siteUser.id ||
@@ -60,26 +36,28 @@ Deno.serve(withCors(async (req: Request) => {
         return fail('This invitation was not found.', 404);
     }
 
-    const { data: organization } = await supabaseAdmin
+    const { data: organization, error: orgError } = await supabaseAdmin
         .from('organizations')
         .select('state')
         .eq('id', invite.organization_id)
         .maybeSingle();
+    if (orgError) return fail('Failed to load the Activity.', 500);
 
     if (
-        !organization || organization.state === 'PENDING' ||
-        organization.state === 'PUNISHED'
+        !organization ||
+        ['PENDING', 'PUNISHED', 'REJECTED'].includes(organization.state)
     ) {
         return fail('This Activity is not accepting members right now.', 409);
     }
 
     // claim the invite first so a cancel that lands meanwhile can't be accepted
-    const { data: claimed } = await supabaseAdmin
+    const { data: claimed, error: claimError } = await supabaseAdmin
         .from('organization_invites')
         .update({ status: 'accepted' })
         .eq('id', invite.id)
         .eq('status', 'pending')
         .select('id');
+    if (claimError) return fail('Failed to accept the invitation.', 500);
 
     if (!claimed || !claimed.length) {
         return fail('This invitation was not found.', 404);
@@ -97,10 +75,17 @@ Deno.serve(withCors(async (req: Request) => {
         );
 
     if (membershipError) {
-        console.error('[ACCEPT_INVITE] membership failed', membershipError);
-        await supabaseAdmin.from('organization_invites')
+        console.error(
+            '[ACCEPT_INVITE] membership failed',
+            membershipError.code,
+        );
+        const { error: undoError } = await supabaseAdmin
+            .from('organization_invites')
             .update({ status: 'pending' })
             .eq('id', invite.id);
+        if (undoError) {
+            console.error('[ACCEPT_INVITE] undo failed', undoError.code);
+        }
         return fail('Error joining organization.', 422);
     }
 

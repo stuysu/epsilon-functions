@@ -1,28 +1,21 @@
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import {
     fetchMemberRequirement,
     isSiteAdmin,
     sendOrgEmail,
 } from '../_shared/utils.ts';
-import corsHeaders, { withCors } from '../_shared/cors.ts';
+import { withCors } from '../_shared/cors.ts';
+import { getCaller } from '../_shared/auth.ts';
 import supabaseAdmin from '../_shared/supabaseAdmin.ts';
 import { emailNewAdvisor } from '../_shared/advisorEmail.ts';
 import { footer } from '../_shared/strings.ts';
-
-// import { initOrgCalendar } from '../_shared/google/calendar.ts'; REMOVE FOR NOW: DOESN'T WORK IN PRODUCTION
+import { logAdminAction } from '../_shared/adminLog.ts';
+import { isId } from '../_shared/http.ts';
 
 type BodyType = {
     organization_id: number;
 };
 
-const isId = (v: unknown): v is number =>
-    Number.isInteger(v) && (v as number) > 0;
-
 Deno.serve(withCors(async (req: Request) => {
-    if (req.method === 'OPTIONS') {
-        return new Response('ok', { headers: corsHeaders });
-    }
-
     const reqBody: BodyType | null = await req.json().catch(() => null);
     const organization_id = reqBody?.organization_id;
 
@@ -30,39 +23,11 @@ Deno.serve(withCors(async (req: Request) => {
         return new Response('Missing field', { status: 400 });
     }
 
-    const authHeader = req.headers.get('Authorization') ?? '';
-    const supabaseClient = createClient(
-        Deno.env.get('SUPABASE_URL') ?? '',
-        Deno.env.get('SUPABASE_ANON_KEY') ?? '',
-        { global: { headers: { Authorization: authHeader } } },
-    );
-
-    const jwt = authHeader.split(' ')[1];
-    const { data: userData } = await supabaseClient.auth.getUser(jwt);
-    const user = userData?.user;
-
     const required_members = await fetchMemberRequirement();
 
-    /* Failed to fetch supabase user */
-    if (!user) {
-        return new Response('Failed to fetch user.', { status: 401 });
-    }
-
-    /* check if user is a verified user. Verified user = the userdata that the site uses */
-    const { data: verifiedUsers, error: verifiedUsersError } =
-        await supabaseClient.from('users')
-            .select('*')
-            .eq('email', user.email);
-
-    if (verifiedUsersError) {
-        return new Response('Failed to fetch users associated email.', {
-            status: 500,
-        });
-    }
-
-    if (!verifiedUsers || !verifiedUsers.length) {
-        return new Response('User is unauthorized.', { status: 401 });
-    }
+    const caller = await getCaller(req);
+    if (caller instanceof Response) return caller;
+    const { client: supabaseClient, authUser: user, user: siteUser } = caller;
 
     if (!(await isSiteAdmin(user.email))) {
         return new Response('Permission denied.', { status: 403 });
@@ -93,18 +58,25 @@ Deno.serve(withCors(async (req: Request) => {
         faculty_email: string | null;
     };
 
-    const { count } = await supabaseClient.from('memberships')
+    const { count, error: countError } = await supabaseClient
+        .from('memberships')
         .select(`user_id`, { count: 'exact', head: true })
         .eq('organization_id', organization_id)
         .eq('active', true)
         .neq('role', 'ADVISOR');
+    /* a wrong count would lock or unlock the club by mistake */
+    if (countError) {
+        return new Response('Failed to approve organization.', { status: 500 });
+    }
     const org_members = count ?? 0;
 
+    const newState = org_members >= required_members ? 'UNLOCKED' : 'LOCKED';
     const { data: orgData, error: approveError } = await supabaseClient.from(
         'organizations',
     )
         .update({
-            state: org_members >= required_members ? 'UNLOCKED' : 'LOCKED',
+            state: newState,
+            rejected_at: null,
         })
         .eq('id', organization_id)
         .eq('state', 'PENDING')
@@ -125,6 +97,13 @@ Deno.serve(withCors(async (req: Request) => {
     }
 
     const approvedOrgName = orgData[0].name;
+
+    await logAdminAction(siteUser, {
+        action: 'approve_charter',
+        targetType: 'organization',
+        targetId: organization_id,
+        details: { organization: approvedOrgName, state: newState },
+    });
 
     const { data: advisorResult, error: advisorError } = await supabaseAdmin
         .rpc('add_charter_advisor', { org_id: organization_id });
@@ -152,19 +131,11 @@ ${
 
     const subject = `${approvedOrgName}: Charter Approved | Epsilon`;
 
-    await sendOrgEmail(organization_id, subject, emailBody, false, true);
-
-    /* asynchronously create a google calendar
-    REMOVE FOR NOW: DOESN'T WORK IN PRODUCTION
-    initOrgCalendar(organization_id)
-    .catch((error : unknown) => {
-        if (error instanceof Error) {
-            console.error(`Failed to create calendar: ` + error.message);
-        } else {
-            console.error('Unexpected error', error);
-        }
-    });
-    */
+    if (!await sendOrgEmail(organization_id, subject, emailBody, false, true)) {
+        console.error(
+            `[approve-organization] email failed for org ${organization_id}`,
+        );
+    }
 
     return new Response(
         JSON.stringify({

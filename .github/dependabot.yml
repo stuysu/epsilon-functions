@@ -1,0 +1,11 @@
+# Dependabot can't read deno.json or URL imports, so only Actions are covered.
+# Bump Deno dependencies by hand (see README).
+version: 2
+updates:
+    - package-ecosystem: github-actions
+      directory: /
+      schedule:
+          interval: weekly
+      groups:
+          actions:
+              patterns: ['*']

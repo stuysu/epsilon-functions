@@ -1,11 +1,10 @@
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import corsHeaders, { withCors } from '../_shared/cors.ts';
-
-import { datetime } from 'https://deno.land/x/ptera/mod.ts';
+import { createClient } from '@supabase/supabase-js';
+import { withCors } from '../_shared/cors.ts';
 import Transport from '../_shared/emailTransport.ts';
 import { footer } from '../_shared/strings.ts';
 import { safeSupabaseQuery } from '../_shared/utils.ts';
-import { dbErrorStatus, readJson } from '../_shared/http.ts';
+import { dbErrorStatus, isId, readJson } from '../_shared/http.ts';
+import { logAdminAction } from '../_shared/adminLog.ts';
 
 type BodyType = {
     message_id: number;
@@ -13,10 +12,6 @@ type BodyType = {
 };
 
 Deno.serve(withCors(async (req: Request) => {
-    if (req.method === 'OPTIONS') {
-        return new Response('ok', { headers: corsHeaders });
-    }
-
     const authHeader = req.headers.get('Authorization')!;
 
     const supabaseClient = createClient(
@@ -40,7 +35,10 @@ Deno.serve(withCors(async (req: Request) => {
         .eq('users.email', user.email);
 
     if (permissionsError) {
-        console.log(permissionsError);
+        console.error(
+            '[valentines] permissions lookup failed',
+            permissionsError.code,
+        );
         return new Response(`Failed to fetch user id.`, {
             status: 500,
         });
@@ -69,6 +67,9 @@ Deno.serve(withCors(async (req: Request) => {
     if (!body.message_id) {
         return new Response('No message id provided.', { status: 400 });
     }
+    if (!isId(body.message_id)) {
+        return new Response('Invalid message id.', { status: 400 });
+    }
 
     const { data: messageData, error: messageDataError } = await supabaseClient
         .from('valentinesmessages')
@@ -85,13 +86,15 @@ Deno.serve(withCors(async (req: Request) => {
         return new Response('Message already approved.', { status: 400 });
     }
     try {
-        const sender = await safeSupabaseQuery(
+        const sender = await safeSupabaseQuery<
+            { email: string; first_name: string }
+        >(
             supabaseClient.from('users')
                 .select('email,first_name')
                 .eq('id', messageData.sender)
                 .single(),
         );
-        const receiver = await safeSupabaseQuery(
+        const receiver = await safeSupabaseQuery<{ email: string }>(
             supabaseClient.from('users')
                 .select('email')
                 .eq('id', messageData.receiver)
@@ -125,6 +128,15 @@ You may submit a new message if desired.` + footer;
         if (!deletedMessages || !deletedMessages.length) {
             return new Response('Message not found.', { status: 404 });
         }
+
+        await logAdminAction(
+            { id: (permissions[0].users as unknown as { id: number }).id },
+            {
+                action: 'reject_valentine',
+                targetType: 'valentine',
+                targetId: body.message_id,
+            },
+        );
 
         /* the message is already gone, so a mail failure must not turn this
            into an error the moderator would retry */

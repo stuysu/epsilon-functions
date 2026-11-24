@@ -1,6 +1,6 @@
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import corsHeaders, { withCors } from '../_shared/cors.ts';
-import { readJson } from '../_shared/http.ts';
+import { withCors } from '../_shared/cors.ts';
+import { getCaller } from '../_shared/auth.ts';
+import { isId, readJson } from '../_shared/http.ts';
 import { emailNewAdvisor } from '../_shared/advisorEmail.ts';
 
 type BodyType = {
@@ -14,39 +14,20 @@ const fail = (message: string, status: number) =>
 // Adds a faculty advisor for a club admin and emails the advisor. Returns the
 // result of add_organization_advisor ('added', 'no_account', ...).
 Deno.serve(withCors(async (req: Request) => {
-    if (req.method === 'OPTIONS') {
-        return new Response('ok', { headers: corsHeaders });
-    }
-
     const body: BodyType | null = await readJson(req);
     if (!body) return fail('Invalid JSON body.', 400);
 
     const { organization_id, advisor_email } = body;
     if (
-        !Number.isInteger(organization_id) ||
+        !isId(organization_id) ||
         typeof advisor_email !== 'string' || !advisor_email.trim()
     ) {
         return fail('Missing field', 400);
     }
 
-    const authHeader = req.headers.get('Authorization');
-    if (!authHeader) return fail('User is unauthorized.', 401);
-    const supabaseClient = createClient(
-        Deno.env.get('SUPABASE_URL') ?? '',
-        Deno.env.get('SUPABASE_ANON_KEY') ?? '',
-        { global: { headers: { Authorization: authHeader } } },
-    );
-
-    const jwt = authHeader.split(' ')[1];
-    const { data: userData } = await supabaseClient.auth.getUser(jwt);
-    if (!userData.user) return fail('User is unauthorized.', 401);
-
-    const { data: siteUser } = await supabaseClient
-        .from('users')
-        .select('first_name, last_name')
-        .eq('email', userData.user.email)
-        .maybeSingle();
-    if (!siteUser) return fail('User is unauthorized.', 401);
+    const caller = await getCaller(req);
+    if (caller instanceof Response) return caller;
+    const { client: supabaseClient, user: siteUser } = caller;
 
     // the function checks the caller is one of the club's admins
     const { data: result, error } = await supabaseClient.rpc(

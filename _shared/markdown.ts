@@ -38,9 +38,10 @@ export const markdownToText = (markdown: string): string => {
         .replace(/`([^`\n]+)`/g, '$1')
         // quotes
         .replace(/^([ \t]*)(?:>[ \t]?)+/gm, '$1│ ')
-        // tables: drop the divider row, separate cells with dots
+        // tables: drop the divider row (any dash count, under a row with
+        // a pipe), separate cells with dots
         .replace(
-            /^[ \t]*\|?(?:[ \t]*:?-{3,}:?[ \t]*\|)+[ \t]*(?::?-{3,}:?)?[ \t]*\n?/gm,
+            /(?<=^[^\n]*\|[^\n]*\n)[ \t]*\|?(?:[ \t]*:?-+:?[ \t]*\|)+(?:[ \t]*:?-+:?)?[ \t]*(?:\n|$)/gm,
             '',
         )
         .replace(

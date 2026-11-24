@@ -1,20 +1,24 @@
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import corsHeaders, { withCors } from '../_shared/cors.ts';
-
-import { datetime } from 'https://deno.land/x/ptera/mod.ts';
+import { withCors } from '../_shared/cors.ts';
 import {
     checkAdvisor,
+    ERR_MAX_ROOMS,
+    isApprovedClub,
     isSiteAdmin,
     isValidMeeting,
+    MEETING_CAP_CODE,
     roomRequiresAdvisor,
     sendOrgEmail,
 } from '../_shared/utils.ts';
 import supabaseAdmin from '../_shared/supabaseAdmin.ts';
-import { footer } from '../_shared/strings.ts';
-import { dbErrorStatus, readJson } from '../_shared/http.ts';
-
-// import { createCalendarEvent } from '../_shared/google/calendar.ts'; doesn't work
-
+import {
+    dbErrorStatus,
+    isId,
+    LIMITS,
+    readJson,
+    textProblem,
+} from '../_shared/http.ts';
+import { getCaller } from '../_shared/auth.ts';
+import { meetingEmailText } from '../_shared/emails.ts';
 type BodyType = {
     organization_id: number;
     title: string;
@@ -44,41 +48,9 @@ const returnSelect = `
         `;
 
 Deno.serve(withCors(async (req: Request) => {
-    if (req.method === 'OPTIONS') {
-        return new Response('ok', { headers: corsHeaders });
-    }
-
-    const authHeader = req.headers.get('Authorization')!;
-    const supabaseClient = createClient(
-        Deno.env.get('SUPABASE_URL') ?? '',
-        Deno.env.get('SUPABASE_ANON_KEY') ?? '',
-        { global: { headers: { Authorization: authHeader } } },
-    );
-
-    const jwt = authHeader?.split(' ')[1];
-    const { data: userData } = await supabaseClient.auth.getUser(jwt);
-    const user = userData.user;
-
-    /* Failed to fetch supabase user */
-    if (!user) {
-        return new Response('Failed to fetch user.', { status: 401 });
-    }
-
-    /* check if user is a verified user. Verified user = the userdata that the site uses */
-    const { data: verifiedUsers, error: verifiedUsersError } =
-        await supabaseClient.from('users')
-            .select('*')
-            .eq('email', user.email);
-
-    if (verifiedUsersError) {
-        return new Response('Failed to fetch users associated email.', {
-            status: 500,
-        });
-    }
-
-    if (!verifiedUsers || !verifiedUsers.length) {
-        return new Response('User is unauthorized.', { status: 401 });
-    }
+    const caller = await getCaller(req);
+    if (caller instanceof Response) return caller;
+    const { authUser: user, user: siteUser } = caller;
 
     const bodyJson = await readJson(req);
     if (!bodyJson) {
@@ -86,7 +58,7 @@ Deno.serve(withCors(async (req: Request) => {
     }
     if (
         bodyJson.room_id !== undefined && bodyJson.room_id !== null &&
-        !Number.isInteger(bodyJson.room_id)
+        !isId(bodyJson.room_id)
     ) {
         return new Response('Invalid room.', { status: 400 });
     }
@@ -96,11 +68,22 @@ Deno.serve(withCors(async (req: Request) => {
     ) {
         return new Response('Invalid advisor.', { status: 400 });
     }
+    const textError = textProblem(
+        bodyJson.title,
+        'Meeting title',
+        LIMITS.meetingTitle,
+    ) ?? textProblem(
+        bodyJson.description,
+        'Meeting description',
+        LIMITS.meetingDescription,
+        false,
+    );
+    if (textError) return new Response(textError, { status: 400 });
     const advisor = bodyJson.advisor?.trim() || null;
     const body: BodyType = {
         organization_id: bodyJson.organization_id,
-        title: typeof bodyJson.title === 'string' ? bodyJson.title.trim() : '',
-        description: bodyJson.description,
+        title: bodyJson.title.trim(),
+        description: bodyJson.description ?? '',
         room_id: bodyJson.room_id,
         start_time: bodyJson.start_time,
         end_time: bodyJson.end_time,
@@ -112,7 +95,7 @@ Deno.serve(withCors(async (req: Request) => {
     if (!body.organization_id || !body.title) {
         return new Response('Missing field', { status: 400 });
     }
-    if (!Number.isInteger(body.organization_id)) {
+    if (!isId(body.organization_id)) {
         return new Response('Invalid organization.', { status: 400 });
     }
 
@@ -123,7 +106,7 @@ Deno.serve(withCors(async (req: Request) => {
                 .from('memberships')
                 .select('id')
                 .eq('organization_id', body.organization_id)
-                .eq('user_id', verifiedUsers[0].id)
+                .eq('user_id', siteUser.id)
                 .eq('active', true)
                 .in('role', ['ADMIN', 'CREATOR', 'ADVISOR'])
                 .limit(1);
@@ -135,6 +118,18 @@ Deno.serve(withCors(async (req: Request) => {
         if (!leaderMembership || !leaderMembership.length) {
             return new Response(
                 'You must be a leader or advisor of this organization to schedule its meetings.',
+                { status: 403 },
+            );
+        }
+        const approved = await isApprovedClub(body.organization_id);
+        if (approved === null) {
+            return new Response('Failed to check the Activity.', {
+                status: 500,
+            });
+        }
+        if (!approved) {
+            return new Response(
+                'Only approved Activities can schedule meetings.',
                 { status: 403 },
             );
         }
@@ -196,6 +191,9 @@ Deno.serve(withCors(async (req: Request) => {
             status: 409,
         });
     }
+    if (createMeetingError?.code === MEETING_CAP_CODE) {
+        return new Response(ERR_MAX_ROOMS, { status: 400 });
+    }
     /* another booking for this room landed first */
     if (createMeetingError?.code === '23P01') {
         return new Response(
@@ -210,36 +208,26 @@ Deno.serve(withCors(async (req: Request) => {
     }
 
     /* send out emails */
-    const startTime = datetime(createMeetingData[0].start_time)
-        .toZonedTime('America/New_York').format('MMMM d, YYYY, h:mm a');
-    const endTime = datetime(createMeetingData[0].end_time).toZonedTime(
-        'America/New_York',
-    ).format('MMMM d, YYYY, h:mm a');
-
-    const emailText =
-        `You are receiving this email because you are a member of {ORG_NAME}.
-This email is to let you know of an upcoming meeting. The details of which are below.
-Title: ${body.title}
-Description: ${body.description}
-Start Date: ${startTime} EST
-End Date: ${endTime} EST
-Room: ${createMeetingData[0].rooms?.name || 'Virtual'}
-Advisor: ${createMeetingData[0].advisor || 'None'}` + footer;
+    const emailText = meetingEmailText(
+        'This email is to let you know of an upcoming meeting. The details of which are below.',
+        createMeetingData[0],
+    );
 
     const emailSubject = `{ORG_NAME} scheduled a meeting | Epsilon`;
 
     const emailFaculty = body.notify_faculty === true ||
         roomRequiresAdvisor(createMeetingData[0].rooms);
 
+    let sent = true;
     if (bodyJson.silent !== true) {
-        await sendOrgEmail(
+        sent = await sendOrgEmail(
             body.organization_id,
             emailSubject,
             emailText,
             emailFaculty,
         );
     } else if (emailFaculty) {
-        await sendOrgEmail(
+        sent = await sendOrgEmail(
             body.organization_id,
             emailSubject,
             emailText,
@@ -248,51 +236,13 @@ Advisor: ${createMeetingData[0].advisor || 'None'}` + footer;
             true,
         );
     }
-
-    /* asynchronously create calendar event
-    [DOESN'T WORK FOR NOW]
-    type ctyp = {
-        id: number,
-        name: string,
-        url: string,
-        googlecalendars: {
-            id: number,
-            calendar_id: string
-        }
-    }
-
-
-    const { data: orgData, error: orgError } = await supabaseClient.from('organizations')
-        .select(`
-            id,
-            name,
-            googlecalendars!inner (
-                id,
-                calendar_id
-            )
-        `)
-        .eq('id', body.organization_id)
-        .returns<ctyp[]>();
-
-    if (orgError || !orgData || !orgData.length) {
-        console.log("Error fetching organization data.");
-    } else {
-        createCalendarEvent(
-            orgData[0].googlecalendars.calendar_id,
-            {
-                name: body.title,
-                description: body.description,
-                start: createMeetingData[0].start_time,
-                end: createMeetingData[0].end_time,
-                location: createMeetingData[0].rooms?.name || "Virtual",
-                source: {
-                    title: `Meeting by ${orgData[0].name} | StuyActivities`,
-			        url: `${Deno.env.get('SITE_URL')}/${orgData[0].url}/meetings`
-                }
-            }
+    if (!sent) {
+        console.error(
+            `[create-meeting] email failed for meeting ${
+                createMeetingData[0].id
+            }`,
         );
     }
-    */
 
     return new Response(
         JSON.stringify({

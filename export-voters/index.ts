@@ -1,133 +1,119 @@
 import supabaseAdmin from '../_shared/supabaseAdmin.ts';
-import * as jose from 'https://deno.land/x/jose@v5.9.6/index.ts';
+import * as jose from 'jose';
 import { withCors } from '../_shared/cors.ts';
+import { fetchAllRows } from '../_shared/rows.ts';
+
+/* VOTE_PUBLIC_KEY: the vote site's RS256 key (SPKI PEM); VOTE_JWT_ISSUER and
+   VOTE_JWT_AUDIENCE are checked when set */
+const PUBLIC_KEY = Deno.env.get('VOTE_PUBLIC_KEY')?.replace(/\\n/g, '\n');
+const ISSUER = Deno.env.get('VOTE_JWT_ISSUER') || undefined;
+const AUDIENCE = Deno.env.get('VOTE_JWT_AUDIENCE') || undefined;
+
+type VotePayload = {
+    user?: {
+        adminPrivileges?: boolean;
+        firstName?: string;
+        lastName?: string;
+        email?: string;
+    };
+};
+
+const json = (body: unknown, status = 200) =>
+    new Response(JSON.stringify(body), {
+        headers: { 'Content-Type': 'application/json' },
+        status,
+    });
+
+let key: CryptoKey | null = null;
 
 Deno.serve(withCors(async (req: Request) => {
-    const jwt = req.headers.get('Authorization')?.replace('Bearer ', '');
+    const jwt = req.headers.get('Authorization')?.match(/^Bearer (\S+)$/)
+        ?.[1];
     if (!jwt) {
-        return new Response(
-            JSON.stringify({
-                success: false,
-                error: 'Missing authorization JWT header',
-            }),
-            {
-                headers: { 'Content-Type': 'application/json' },
-                status: 401,
-            },
-        );
+        return json({
+            success: false,
+            error: 'Missing authorization JWT header',
+        }, 401);
     }
 
-    // send GraphQL request to fetch validated Publickey
-    const data = await fetch('https://vote.stuysu.org/api/graphql', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-            query: `{publicKey {key expiration}}`,
-            variables: {},
-        }),
-    });
-    const { data: { publicKey: { key, expiration } } } = await data.json();
-
-    if (new Date() > new Date(expiration)) {
-        return new Response(
-            JSON.stringify({
-                success: false,
-                error: 'Public key from vote.stuysu.org has expired',
-            }),
-            {
-                headers: { 'Content-Type': 'application/json' },
-                status: 401,
-            },
-        );
+    if (!PUBLIC_KEY) {
+        console.error('[export-voters] VOTE_PUBLIC_KEY is not set');
+        return json({ success: false, error: 'Not configured' }, 503);
     }
 
-    // verify JWT provided by the user
+    let user: VotePayload['user'];
     try {
-        const ecPublicKey = await jose.importSPKI(key, 'RS256');
-        const { payload: { user: userPayload } } = await jose.jwtVerify(
-            jwt,
-            ecPublicKey,
-        );
-
-        if (!userPayload.adminPrivileges) {
-            return new Response(
-                JSON.stringify({
-                    success: false,
-                    error: 'Not allowed to access this endpoint',
-                }),
-                {
-                    headers: { 'Content-Type': 'application/json' },
-                    status: 401,
-                },
-            );
-        }
-        if (Deno.env.get('NOTIFICATION_WEBHOOK')) {
-            try {
-                const _res = await fetch(
-                    Deno.env.get('NOTIFICATION_WEBHOOK') || '',
-                    {
-                        method: 'POST',
-                        body: JSON.stringify({
-                            content: `${
-                                (new Date()).toISOString()
-                            }: ${userPayload.firstName} ${userPayload.lastName} (${userPayload.email}) accessed export-voters. If they are not from the BOE, panic!!`,
-                        }),
-                        headers: {
-                            'Content-Type': 'application/json',
-                        },
-                    },
-                );
-            } catch (err) {
-                console.error(err);
-            }
-        }
-
-        type user = {
-            first_name: string;
-            last_name: string;
-            email: string;
-            grad_year: number;
-            active: boolean;
-            is_faculty: boolean;
-        };
-        let { data, error } = await supabaseAdmin.from('users').select(`
-            first_name,
-            last_name,
-            email,
-            grad_year,
-            active,
-            is_faculty
-        `)
-            .eq('active', true)
-            .eq('is_faculty', false);
-        if (error) throw error;
-        if (!data) data = [];
-        return new Response(JSON.stringify({
-            success: true,
-            data: data.map((u: user) => {
-                return {
-                    firstName: u.first_name,
-                    lastName: u.last_name,
-                    email: u.email,
-                    gradYear: u.grad_year,
-                    active: u.active,
-                    isFaculty: u.is_faculty,
-                };
-            }),
-        }));
+        key ??= await jose.importSPKI(PUBLIC_KEY, 'RS256');
+        const { payload } = await jose.jwtVerify<VotePayload>(jwt, key, {
+            algorithms: ['RS256'],
+            issuer: ISSUER,
+            audience: AUDIENCE,
+        });
+        user = payload.user;
     } catch (err) {
-        console.error(err);
-        return new Response(
-            JSON.stringify({
-                success: false,
-                error: err.message || 'Unknown error (fun!)',
-            }),
-            {
-                headers: { 'Content-Type': 'application/json' },
-                status: 401,
-            },
-        );
+        console.error('[export-voters] rejected token', err);
+        return json({ success: false, error: 'Invalid token' }, 401);
     }
+
+    if (!user?.adminPrivileges) {
+        return json({
+            success: false,
+            error: 'Not allowed to access this endpoint',
+        }, 403);
+    }
+
+    const webhook = Deno.env.get('NOTIFICATION_WEBHOOK');
+    if (webhook) {
+        try {
+            await fetch(webhook, {
+                method: 'POST',
+                body: JSON.stringify({
+                    content: `${
+                        (new Date()).toISOString()
+                    }: ${user.firstName} ${user.lastName} (${user.email}) accessed export-voters. If they are not from the BOE, panic!!`,
+                }),
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+            });
+        } catch (err) {
+            console.error(err);
+        }
+    }
+
+    type VoterRow = {
+        first_name: string;
+        last_name: string;
+        email: string;
+        grad_year: number;
+        active: boolean;
+        is_faculty: boolean;
+    };
+    const { data, error } = await fetchAllRows((from, to) =>
+        supabaseAdmin.from('users')
+            .select(
+                'first_name, last_name, email, grad_year, active, is_faculty',
+            )
+            .eq('active', true)
+            .eq('is_faculty', false)
+            .order('id')
+            .range(from, to)
+            .returns<VoterRow[]>()
+    );
+    if (error) {
+        console.error('[export-voters] users fetch failed', error);
+        return json({ success: false, error: 'Failed to fetch users' }, 500);
+    }
+
+    return json({
+        success: true,
+        data: data.map((u) => ({
+            firstName: u.first_name,
+            lastName: u.last_name,
+            email: u.email,
+            gradYear: u.grad_year,
+            active: u.active,
+            isFaculty: u.is_faculty,
+        })),
+    });
 }));
