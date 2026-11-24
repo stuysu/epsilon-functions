@@ -8,8 +8,9 @@ sending email.
 Each folder with an `index.ts` is one function, served at
 `/functions/v1/<folder name>`. `main/` is the router used on the self-hosted
 server: it checks the JWT (when `VERIFY_JWT=true`) and hands the request to
-the right function. `calendar-feed` (opened by calendar apps) and
-`export-voters` (checks the vote site's own token) skip that check. `_shared/` holds code used by several functions, for
+the right function. `calendar-feed` (opened by calendar apps),
+`export-voters` (checks the vote site's own token) and `fetch-schedule` (a
+public read) skip that check. `_shared/` holds code used by several functions, for
 example CORS headers (`cors.ts`), the service-role client (`supabaseAdmin.ts`),
 the mail transport (`emailTransport.ts`), HTTP responses (`http.ts`) and
 common helpers (`utils.ts`).
