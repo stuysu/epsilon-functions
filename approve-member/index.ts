@@ -1,22 +1,18 @@
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import corsHeaders, { withCors } from '../_shared/cors.ts';
+import { withCors } from '../_shared/cors.ts';
+import { getCaller } from '../_shared/auth.ts';
 import supabaseAdmin from '../_shared/supabaseAdmin.ts';
 import {
     sendMemberEmail,
     unlockOrganizationIfReady,
 } from '../_shared/utils.ts';
 import { footer } from '../_shared/strings.ts';
-import { readJson } from '../_shared/http.ts';
+import { isId, readJson } from '../_shared/http.ts';
 
 type BodyType = {
     member_id: number;
 };
 
 Deno.serve(withCors(async (req: Request) => {
-    if (req.method === 'OPTIONS') {
-        return new Response('ok', { headers: corsHeaders });
-    }
-
     const bodyJson = await readJson(req);
     if (!bodyJson) {
         return new Response('Invalid JSON body.', { status: 400 });
@@ -29,38 +25,13 @@ Deno.serve(withCors(async (req: Request) => {
     if (!member_id) {
         return new Response('Missing field', { status: 400 });
     }
-
-    const authHeader = req.headers.get('Authorization')!;
-    const supabaseClient = createClient(
-        Deno.env.get('SUPABASE_URL') ?? '',
-        Deno.env.get('SUPABASE_ANON_KEY') ?? '',
-        { global: { headers: { Authorization: authHeader } } },
-    );
-
-    const jwt = authHeader?.split(' ')[1];
-    const { data: userData } = await supabaseClient.auth.getUser(jwt);
-    const user = userData.user;
-
-    /* Failed to fetch supabase user */
-    if (!user) {
-        return new Response('Failed to fetch user.', { status: 401 });
+    if (!isId(member_id)) {
+        return new Response('Invalid member.', { status: 400 });
     }
 
-    /* check if user is a verified user. Verified user = the userdata that the site uses */
-    const { data: verifiedUsers, error: verifiedUsersError } =
-        await supabaseClient.from('users')
-            .select('*')
-            .eq('email', user.email);
-
-    if (verifiedUsersError) {
-        return new Response('Failed to fetch users associated email.', {
-            status: 500,
-        });
-    }
-
-    if (!verifiedUsers || !verifiedUsers.length) {
-        return new Response('User is unauthorized.', { status: 401 });
-    }
+    const caller = await getCaller(req);
+    if (caller instanceof Response) return caller;
+    const { client: supabaseClient } = caller;
 
     /* RLS takes care of any permissions */
 
@@ -114,7 +85,11 @@ We hope you enjoy your club experience at Stuy.` + footer;
 
     const emailSubject = `Membership Approved: {ORG_NAME} | Epsilon`;
 
-    sendMemberEmail(member_id, emailSubject, emailBody);
+    if (!await sendMemberEmail(member_id, emailSubject, emailBody)) {
+        console.error(
+            `[approve-member] email failed for membership ${member_id}`,
+        );
+    }
 
     /* ALSO CHECK IF CLUB IS PENDING AND SHOULD IT BE UNLOCKED */
     await unlockOrganizationIfReady(memberData[0].organizations.id);

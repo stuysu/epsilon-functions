@@ -1,169 +1,63 @@
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import { sendOrgEmail } from '../_shared/utils.ts';
-import corsHeaders, { withCors } from '../_shared/cors.ts';
-import { datetime } from 'https://deno.land/x/ptera/mod.ts';
-import { footer } from '../_shared/strings.ts';
-import { dbErrorStatus, readJson } from '../_shared/http.ts';
-
-type BodyType = {
-    room_id: number;
-};
+import { withCors } from '../_shared/cors.ts';
+import { isId, readJson, rpcErrorResponse } from '../_shared/http.ts';
+import { getCaller } from '../_shared/auth.ts';
+import { logAdminAction } from '../_shared/adminLog.ts';
+import {
+    type CancelledMeeting,
+    emailCancelledMeetings,
+} from '../_shared/emails.ts';
 
 Deno.serve(withCors(async (req: Request) => {
-    if (req.method === 'OPTIONS') {
-        return new Response('ok', { headers: corsHeaders });
-    }
-
     const bodyJson = await readJson(req);
     if (!bodyJson) {
         return new Response('Invalid JSON body.', { status: 400 });
     }
 
-    const {
-        room_id,
-    }: BodyType = bodyJson;
-
+    const { room_id } = bodyJson;
     if (!room_id) {
         return new Response('Missing field', { status: 400 });
     }
+    if (!isId(room_id)) {
+        return new Response('Invalid room.', { status: 400 });
+    }
 
-    const authHeader = req.headers.get('Authorization')!;
-    const supabaseClient = createClient(
-        Deno.env.get('SUPABASE_URL') ?? '',
-        Deno.env.get('SUPABASE_ANON_KEY') ?? '',
-        { global: { headers: { Authorization: authHeader } } },
+    const caller = await getCaller(req);
+    if (caller instanceof Response) return caller;
+
+    /* cancels the room's upcoming meetings, detaches the rest and deletes
+       it in one transaction (the function checks the caller is a site admin) */
+    const { data, error } = await caller.client.rpc('delete_room', {
+        target_room: room_id,
+    });
+    if (error || !data) {
+        return rpcErrorResponse(error, 'Failed to delete room.');
+    }
+
+    const result = data as {
+        room_name: string;
+        cancelled: CancelledMeeting[];
+    };
+
+    await logAdminAction(caller.user, {
+        action: 'delete_room',
+        targetType: 'room',
+        targetId: room_id,
+        details: {
+            room: result.room_name,
+            cancelled: result.cancelled.length,
+        },
+    });
+
+    const unemailed = await emailCancelledMeetings(
+        result.cancelled,
+        () => `due to room ${result.room_name} no longer being available`,
     );
-
-    const jwt = authHeader?.split(' ')[1];
-    const { data: userData } = await supabaseClient.auth.getUser(jwt);
-    const user = userData.user;
-
-    /* Failed to fetch supabase user */
-    if (!user) {
-        return new Response('Failed to fetch user.', { status: 401 });
-    }
-
-    /* check if user is a verified user. Verified user = the userdata that the site uses */
-    const { data: verifiedUsers, error: verifiedUsersError } =
-        await supabaseClient.from('users')
-            .select('*')
-            .eq('email', user.email);
-
-    if (verifiedUsersError) {
-        return new Response('Failed to fetch users associated email.', {
-            status: 500,
-        });
-    }
-
-    if (!verifiedUsers || !verifiedUsers.length) {
-        return new Response('User is unauthorized.', { status: 401 });
-    }
-
-    /* validation via RLS */
-
-    const { data: room, error: roomFetchError } = await supabaseClient
-        .from('rooms')
-        .select('name')
-        .eq('id', room_id)
-        .limit(1)
-        .single();
-
-    if (roomFetchError || !room) {
-        return new Response('Failed to fetch room.', {
-            status: dbErrorStatus(roomFetchError),
-        });
-    }
-
-    const { data: permitted, error: permittedError } = await supabaseClient
-        .from('rooms')
-        .update({ name: room.name })
-        .eq('id', room_id)
-        .select('id');
-
-    if (permittedError) {
-        return new Response('Failed to update room.', { status: 500 });
-    }
-
-    if (!permitted || !permitted.length) {
-        return new Response('User is unauthorized.', { status: 403 });
-    }
-
-    const now = new Date().toISOString();
-
-    const { data: cancelledMeetings, error: cancelError } = await supabaseClient
-        .from('meetings')
-        .delete()
-        .eq('room_id', room_id)
-        .gte('start_time', now)
-        .select(`
-                title,
-                start_time,
-                organization_id
-            `);
-
-    if (cancelError || !cancelledMeetings) {
-        console.error('Failed to cancel meetings', cancelError);
-        return new Response('Failed to cancel meetings.', { status: 500 });
-    }
-
-    const { error: detachError } = await supabaseClient
-        .from('meetings')
-        .update({ room_id: null })
-        .eq('room_id', room_id);
-
-    if (detachError) {
-        console.error('Failed to remove room from meetings', detachError);
-        return new Response('Failed to update meetings.', { status: 500 });
-    }
-
-    const { error: roomDeleteError } = await supabaseClient.from('rooms')
-        .delete()
-        .eq('id', room_id);
-
-    if (roomDeleteError) {
-        return new Response('Failed to delete room.', { status: 500 });
-    }
-
-    const removedMeetings: {
-        [organizationId: number]: { title: string; start_time: string }[];
-    } = {};
-
-    for (const meeting of cancelledMeetings) {
-        (removedMeetings[meeting.organization_id] ??= []).push(meeting);
-    }
-
-    for (
-        const [organizationId, orgMeetings] of Object.entries(removedMeetings)
-    ) {
-        const emailBody = `Dear {ORG_NAME} member,
-
-This email is to let you know that the following meeting(s) of {ORG_NAME} have been cancelled by administrators due to room ${room.name} no longer being available:
-
-${
-            orgMeetings.map((meeting) =>
-                `${meeting.title} at ${
-                    datetime(meeting.start_time).toZonedTime(
-                        'America/New_York',
-                    ).format('MMMM d, YYYY, h:mm a')
-                }`
-            ).join('\n')
-        }
-
-We sincerely apologize for the inconvenience.` +
-            footer;
-
-        await sendOrgEmail(
-            Number(organizationId),
-            `{ORG_NAME}: Meeting(s) Cancelled | Epsilon`,
-            emailBody,
-            false,
-            false,
-        );
-    }
 
     return new Response(
         JSON.stringify({
             success: true,
+            cancelled: result.cancelled.length,
+            unemailed,
         }),
         {
             headers: { 'Content-Type': 'application/json' },

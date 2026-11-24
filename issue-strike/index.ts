@@ -1,8 +1,15 @@
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { sendOrgEmail } from '../_shared/utils.ts';
-import corsHeaders, { withCors } from '../_shared/cors.ts';
-import { footer } from '../_shared/strings.ts';
-import { dbErrorStatus, readJson } from '../_shared/http.ts';
+import { withCors } from '../_shared/cors.ts';
+import { getCaller } from '../_shared/auth.ts';
+import { footer, siteUrl } from '../_shared/strings.ts';
+import { logAdminAction } from '../_shared/adminLog.ts';
+import {
+    dbErrorStatus,
+    isId,
+    LIMITS,
+    readJson,
+    textProblem,
+} from '../_shared/http.ts';
 
 type BodyType = {
     organization_id: number;
@@ -10,10 +17,6 @@ type BodyType = {
 };
 
 Deno.serve(withCors(async (req: Request) => {
-    if (req.method === 'OPTIONS') {
-        return new Response('ok', { headers: corsHeaders });
-    }
-
     const bodyJson = await readJson(req);
     if (!bodyJson) {
         return new Response('Invalid JSON body.', { status: 400 });
@@ -27,41 +30,15 @@ Deno.serve(withCors(async (req: Request) => {
     if (!organization_id || !reason) {
         return new Response('Missing field', { status: 400 });
     }
-
-    const authHeader = req.headers.get('Authorization')!;
-    const supabaseClient = createClient(
-        Deno.env.get('SUPABASE_URL') ?? '',
-        Deno.env.get('SUPABASE_ANON_KEY') ?? '',
-        { global: { headers: { Authorization: authHeader } } },
-    );
-
-    const jwt = authHeader?.split(' ')[1];
-    const { data: userData } = await supabaseClient.auth.getUser(jwt);
-    const user = userData.user;
-
-    /* Failed to fetch supabase user */
-    if (!user) {
-        return new Response('Failed to fetch user.', { status: 401 });
+    if (!isId(organization_id)) {
+        return new Response('Invalid organization.', { status: 400 });
     }
+    const reasonError = textProblem(reason, 'Reason', LIMITS.strikeReason);
+    if (reasonError) return new Response(reasonError, { status: 400 });
 
-    /* check if user is a verified user. Verified user = the userdata that the site uses */
-    const { data: verifiedUsers, error: verifiedUsersError } =
-        await supabaseClient.from('users')
-            .select('*')
-            .eq('email', user.email);
-
-    if (verifiedUsersError) {
-        return new Response('Failed to fetch users associated email.', {
-            status: 500,
-        });
-    }
-
-    if (!verifiedUsers || !verifiedUsers.length) {
-        return new Response('User is unauthorized.', { status: 401 });
-    }
-
-    // this is the user that is stored in public.users
-    const siteUser = verifiedUsers[0];
+    const caller = await getCaller(req);
+    if (caller instanceof Response) return caller;
+    const { client: supabaseClient, user: siteUser } = caller;
 
     /* hand out strike */
     type styp = {
@@ -107,7 +84,12 @@ Deno.serve(withCors(async (req: Request) => {
         });
     }
 
-    /* asynchronously email admins to prevent function from hanging on client */
+    await logAdminAction(siteUser, {
+        action: 'issue_strike',
+        targetType: 'organization',
+        targetId: organization_id,
+        details: { organization: strikeData[0].organizations.name, reason },
+    });
 
     const emailBody =
         `You are receiving this message because you are an admin of {ORG_NAME}.
@@ -115,7 +97,7 @@ Deno.serve(withCors(async (req: Request) => {
 This email is to let you know that your organization has be given a strike for the following reason:
 ${reason}
 
-You can view this strike at ${Deno.env.get('SITE_URL')}/${
+You can view this strike at ${siteUrl()}/${
             strikeData[0].organizations.url
         }/audit
 
@@ -123,7 +105,17 @@ If you would like to dispute this strike, please contact clubpub@stuysu.org.
 ` + footer;
     const emailSubject = `{ORG_NAME}: Strike Received | Epsilon`;
 
-    await sendOrgEmail(organization_id, emailSubject, emailBody, false, true);
+    if (
+        !await sendOrgEmail(
+            organization_id,
+            emailSubject,
+            emailBody,
+            false,
+            true,
+        )
+    ) {
+        console.error(`[issue-strike] email failed for org ${organization_id}`);
+    }
 
     return new Response(
         JSON.stringify({

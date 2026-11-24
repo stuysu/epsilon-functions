@@ -1,7 +1,11 @@
 {
     "imports": {
-        "@supabase/functions-js": "jsr:@supabase/functions-js@^2",
-        "@supabase/server": "npm:@supabase/server@^1"
+        "@supabase/supabase-js": "npm:@supabase/supabase-js@2.119.2",
+        "@types/markdown-it": "npm:@types/markdown-it@14.1.2",
+        "jose": "jsr:@panva/jose@6.2.15",
+        "markdown-it": "npm:markdown-it@14.1.0",
+        "markdown-it-mark": "npm:markdown-it-mark@4.0.0",
+        "nodemailer": "npm:nodemailer@10.6.1"
     },
     "fmt": {
         "useTabs": false,

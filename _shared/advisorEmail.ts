@@ -1,6 +1,6 @@
 import supabaseAdmin from './supabaseAdmin.ts';
 import Transport from './emailTransport.ts';
-import { footer } from './strings.ts';
+import { footer, siteUrl } from './strings.ts';
 import { emailDocument, emailLink, textToHtml } from './emailHtml.ts';
 
 type Advisor = {
@@ -40,7 +40,7 @@ export const emailNewAdvisor = async (
             advisor.first_name ? ` ${advisor.first_name}` : ''
         },`;
         const why = reason(org.name);
-        const clubUrl = `${Deno.env.get('SITE_URL')}/${org.url}`;
+        const clubUrl = `${siteUrl()}/${org.url}`;
         const mistake =
             "If you aren't this club's advisor, email clubpub@stuysu.org and we'll take you off.";
 

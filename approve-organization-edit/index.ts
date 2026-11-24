@@ -1,30 +1,29 @@
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { isSiteAdmin, sendOrgEmail } from '../_shared/utils.ts';
-import corsHeaders, { withCors } from '../_shared/cors.ts';
+import { withCors } from '../_shared/cors.ts';
+import { getCaller } from '../_shared/auth.ts';
 import supabaseAdmin from '../_shared/supabaseAdmin.ts';
 import { emailNewAdvisor } from '../_shared/advisorEmail.ts';
-import { footer } from '../_shared/strings.ts';
+import { footer, IT_EMAIL } from '../_shared/strings.ts';
 import {
     cleanCharter,
     EDITABLE_CHARTER_FIELDS,
+    isClubPictureUrl,
     RESERVED_PATHS,
     validateCharter,
 } from '../_shared/charter.ts';
-import { dbErrorStatus, readJson } from '../_shared/http.ts';
+import { publicBase, removeClubPicture } from '../_shared/picture.ts';
+import { dbErrorStatus, isId, readJson } from '../_shared/http.ts';
+import { logAdminAction } from '../_shared/adminLog.ts';
 
 type BodyType = {
     organization_id: number;
     updated_fields: {
-        [key: string]: any;
+        [key: string]: unknown;
     };
     edit_id: number;
 };
 
 Deno.serve(withCors(async (req: Request) => {
-    if (req.method === 'OPTIONS') {
-        return new Response('ok', { headers: corsHeaders });
-    }
-
     const bodyJson = await readJson(req);
     if (!bodyJson) {
         return new Response('Invalid JSON body.', { status: 400 });
@@ -39,38 +38,13 @@ Deno.serve(withCors(async (req: Request) => {
     if (!organization_id || !updated_fields || !edit_id) {
         return new Response('Missing field', { status: 400 });
     }
-
-    const authHeader = req.headers.get('Authorization')!;
-    const supabaseClient = createClient(
-        Deno.env.get('SUPABASE_URL') ?? '',
-        Deno.env.get('SUPABASE_ANON_KEY') ?? '',
-        { global: { headers: { Authorization: authHeader } } },
-    );
-
-    const jwt = authHeader?.split(' ')[1];
-    const { data: userData } = await supabaseClient.auth.getUser(jwt);
-    const user = userData.user;
-
-    /* Failed to fetch supabase user */
-    if (!user) {
-        return new Response('Failed to fetch user.', { status: 401 });
+    if (!isId(organization_id) || !isId(edit_id)) {
+        return new Response('Invalid organization or edit.', { status: 400 });
     }
 
-    /* check if user is a verified user. Verified user = the userdata that the site uses */
-    const { data: verifiedUsers, error: verifiedUsersError } =
-        await supabaseClient.from('users')
-            .select('*')
-            .eq('email', user.email);
-
-    if (verifiedUsersError) {
-        return new Response('Failed to fetch users associated email.', {
-            status: 500,
-        });
-    }
-
-    if (!verifiedUsers || !verifiedUsers.length) {
-        return new Response('User is unauthorized.', { status: 401 });
-    }
+    const caller = await getCaller(req);
+    if (caller instanceof Response) return caller;
+    const { client: supabaseClient, authUser: user, user: siteUser } = caller;
 
     /* only site admins review charter edits */
     if (!(await isSiteAdmin(user.email))) {
@@ -111,12 +85,12 @@ Deno.serve(withCors(async (req: Request) => {
     /* apply only what the request still asks for: a field the club saved
        directly since then is no longer pending, and one they changed again
        needs a fresh look */
-    const stillPending: { [field: string]: any } = {};
+    const stillPending: { [field: string]: unknown } = {};
     for (const [field, value] of Object.entries(updated_fields)) {
+        /* charter edits never set fair; the column's old default isn't a change */
+        if (field === 'fair') continue;
         const current = pendingEdit[field];
-        if (field !== 'fair' && (current === null || current === undefined)) {
-            continue;
-        }
+        if (current === null || current === undefined) continue;
         if (JSON.stringify(current) !== JSON.stringify(value)) {
             return new Response(
                 'This request changed after you opened it. Reload to see the latest version.',
@@ -127,7 +101,7 @@ Deno.serve(withCors(async (req: Request) => {
     }
 
     /* everything in it was saved directly already */
-    if (!Object.keys(stillPending).some((field) => field !== 'fair')) {
+    if (!Object.keys(stillPending).length) {
         await supabaseClient.from('organizationedits').delete()
             .eq('id', edit_id);
         return new Response(JSON.stringify({ success: true }), {
@@ -151,6 +125,26 @@ Deno.serve(withCors(async (req: Request) => {
             { status: 400 },
         );
     }
+
+    /* leaders write edit requests directly, so the picture could be any URL */
+    const newPicture = cleanedFields.picture;
+    const changesPicture = 'picture' in cleanedFields;
+    if (
+        changesPicture && newPicture &&
+        (typeof newPicture !== 'string' ||
+            !isClubPictureUrl(organization_id, newPicture, publicBase()))
+    ) {
+        return new Response(
+            'The new picture must be one uploaded for this club.',
+            { status: 400 },
+        );
+    }
+    const { data: oldOrg } = changesPicture
+        ? await supabaseClient.from('organizations')
+            .select('picture')
+            .eq('id', organization_id)
+            .maybeSingle()
+        : { data: null };
 
     type orgTyp = {
         name: string;
@@ -186,6 +180,20 @@ Deno.serve(withCors(async (req: Request) => {
 
     const updatedOrgName = orgData[0].name;
 
+    if (oldOrg?.picture && oldOrg.picture !== newPicture) {
+        await removeClubPicture(organization_id, oldOrg.picture);
+    }
+
+    await logAdminAction(siteUser, {
+        action: 'approve_charter_edit',
+        targetType: 'organization',
+        targetId: organization_id,
+        details: {
+            organization: updatedOrgName,
+            fields: Object.keys(cleanedFields),
+        },
+    });
+
     if ('faculty_email' in cleanedFields) {
         const { data: advisorResult, error: advisorError } = await supabaseAdmin
             .rpc('add_charter_advisor', {
@@ -214,27 +222,28 @@ Deno.serve(withCors(async (req: Request) => {
         .eq('id', edit_id)
         .eq('organization_id', organization_id);
 
-    type orgAdminType = {
-        id: number;
-        role: 'ADMIN' | 'CREATOR';
-        users: {
-            first_name: string;
-            email: string;
-        };
-    };
-
-    /* asynchronously email admins to prevent function from hanging on client */
-
     const emailBody =
         `Your organization update request for ${updatedOrgName} has been approved.` +
         footer;
     const emailSubject = `${updatedOrgName}: Charter Update Approved | Epsilon`;
 
-    await sendOrgEmail(organization_id, emailSubject, emailBody, false, true);
+    if (
+        !await sendOrgEmail(
+            organization_id,
+            emailSubject,
+            emailBody,
+            false,
+            true,
+        )
+    ) {
+        console.error(
+            `[approve-organization-edit] email failed for org ${organization_id}`,
+        );
+    }
 
     if (deleteEditError) {
         return new Response(
-            'Failed to delete pre-existing edit. Please contact it@stuysu.org as soon as possible.',
+            `Failed to delete pre-existing edit. Please contact ${IT_EMAIL} as soon as possible.`,
             { status: 500 },
         );
     }

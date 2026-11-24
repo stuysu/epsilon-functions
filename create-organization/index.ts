@@ -1,5 +1,5 @@
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import corsHeaders, { withCors } from '../_shared/cors.ts';
+import { withCors } from '../_shared/cors.ts';
+import { getCaller } from '../_shared/auth.ts';
 import supabaseAdmin from '../_shared/supabaseAdmin.ts';
 import {
     cleanCharter,
@@ -7,6 +7,14 @@ import {
     validateCharter,
 } from '../_shared/charter.ts';
 import { dbErrorStatus, readJson } from '../_shared/http.ts';
+import { IT_EMAIL } from '../_shared/strings.ts';
+import { formatNewYork } from '../_shared/time.ts';
+import {
+    type ClubPicture,
+    PICTURE_PROBLEM,
+    readClubPicture,
+    uploadClubPicture,
+} from '../_shared/picture.ts';
 
 type BodyType = {
     name: string;
@@ -30,19 +38,28 @@ type BodyType = {
     faculty_email?: string;
 };
 
-/* accepts JSON */
-Deno.serve(withCors(async (req: Request) => {
-    if (req.method === 'OPTIONS') {
-        return new Response('ok', { headers: corsHeaders });
+/* the charter as JSON, or multipart with the charter as JSON in `charter`
+   and an optional `picture` file */
+const readRequest = async (
+    req: Request,
+): Promise<{ fields: unknown; picture: File | null } | null> => {
+    const type = req.headers.get('content-type') ?? '';
+    if (!type.startsWith('multipart/form-data')) {
+        return { fields: await readJson(req), picture: null };
     }
+    try {
+        const form = await req.formData();
+        const charter = form.get('charter');
+        const picture = form.get('picture');
+        if (typeof charter !== 'string') return null;
+        if (picture !== null && !(picture instanceof File)) return null;
+        return { fields: JSON.parse(charter), picture };
+    } catch {
+        return null;
+    }
+};
 
-    const authHeader = req.headers.get('Authorization')!;
-    const supabaseClient = createClient(
-        Deno.env.get('SUPABASE_URL') ?? '',
-        Deno.env.get('SUPABASE_ANON_KEY') ?? '',
-        { global: { headers: { Authorization: authHeader } } },
-    );
-
+Deno.serve(withCors(async (req: Request) => {
     type styp = {
         setting_value: number;
     };
@@ -57,43 +74,26 @@ Deno.serve(withCors(async (req: Request) => {
         const deadline = new Date(data.setting_value * 1000);
         if (new Date() > deadline) {
             return new Response(
-                `Chartering for this year has been disabled as of ${deadline.toLocaleString()}.`,
+                `Chartering for this year has been disabled as of ${
+                    formatNewYork(deadline)
+                }.`,
                 { status: 403 },
             );
         }
     }
 
-    const jwt = authHeader?.split(' ')[1];
-    const { data: userData } = await supabaseClient.auth.getUser(jwt);
-    const user = userData.user;
+    const caller = await getCaller(req);
+    if (caller instanceof Response) return caller;
+    const { client: supabaseClient, user: siteUser } = caller;
 
-    /* Failed to fetch supabase user */
-    if (!user) {
-        return new Response('Failed to fetch user.', { status: 401 });
+    const request = await readRequest(req);
+    const bodyJson = request?.fields;
+    if (
+        !bodyJson || typeof bodyJson !== 'object' || Array.isArray(bodyJson)
+    ) {
+        return new Response('Invalid request body.', { status: 400 });
     }
-
-    /* check if user is a verified user. Verified user = the userdata that the site uses */
-    const { data: verifiedUsers, error: verifiedUsersError } =
-        await supabaseClient.from('users')
-            .select('*')
-            .eq('email', user.email);
-
-    if (verifiedUsersError) {
-        return new Response('Failed to fetch users associated email.', {
-            status: 500,
-        });
-    }
-
-    if (!verifiedUsers || !verifiedUsers.length) {
-        return new Response('User is unauthorized.', { status: 401 });
-    }
-
-    const siteUser = verifiedUsers[0];
-    const bodyJson = await readJson(req);
-    if (!bodyJson) {
-        return new Response('Invalid JSON body.', { status: 400 });
-    }
-    const body: BodyType = cleanCharter(bodyJson);
+    const body: BodyType = cleanCharter(bodyJson as BodyType);
 
     const problems = validateCharter(body, true);
     if (problems.length) {
@@ -105,6 +105,12 @@ Deno.serve(withCors(async (req: Request) => {
             'You may not register an Epsilon URL that is already in use.',
             { status: 400 },
         );
+    }
+
+    let picture: ClubPicture | null = null;
+    if (request?.picture) {
+        picture = await readClubPicture(request.picture);
+        if (!picture) return new Response(PICTURE_PROBLEM, { status: 400 });
     }
 
     const { data: orgData, error: orgCreateError } = await supabaseClient.from(
@@ -136,44 +142,78 @@ Deno.serve(withCors(async (req: Request) => {
         `);
 
     if (orgCreateError?.code === '23505') {
+        const field = /name/.test(orgCreateError.message) ? 'name' : 'URL';
         return new Response(
-            'This URL is already in use. Go back and choose another.',
+            `This ${field} is already in use. Go back and choose another.`,
             { status: 409 },
         );
     }
     if (orgCreateError || !orgData || !orgData.length) {
+        console.error('[create-organization] insert failed', orgCreateError);
         return new Response(
-            `Error creating organization. \`${(orgCreateError?.message ||
-                orgCreateError?.code ||
-                'Unknown error. Contact it@stuysu.org.')}\``,
-            { status: dbErrorStatus(orgCreateError) },
+            `Error creating organization. Contact ${IT_EMAIL}.`,
+            { status: orgCreateError ? dbErrorStatus(orgCreateError) : 500 },
         );
     }
+    const orgId: number = orgData[0].id;
+
+    /* don't leave a club behind holding its name and URL */
+    const undo = async () => {
+        const { error } = await supabaseAdmin.from('organizations')
+            .delete()
+            .eq('id', orgId);
+        if (error) console.error('[create-organization] undo failed', error);
+    };
 
     /* CREATE CREATOR MEMBERSHIP FOR USER */
     const { error: membershipError } = await supabaseAdmin.from('memberships')
         .insert({
-            organization_id: orgData[0].id,
+            organization_id: orgId,
             user_id: siteUser.id,
             role: 'CREATOR',
             active: true,
         });
 
     if (membershipError) {
-        /* don't leave a club behind with no creator holding its name and URL */
-        await supabaseAdmin.from('organizations')
-            .delete()
-            .eq('id', orgData[0].id);
+        console.error(
+            '[create-organization] membership failed',
+            membershipError,
+        );
+        await undo();
         return new Response(
-            'Error creating membership. Please contact it@stuysu.org as soon as possible.',
+            `Error creating membership. Please contact ${IT_EMAIL} as soon as possible.`,
             { status: 500 },
         );
+    }
+
+    if (picture) {
+        const uploaded = await uploadClubPicture(orgId, body.url, picture);
+        const { error: pictureError } = uploaded
+            ? await supabaseAdmin.from('organizations')
+                .update({ picture: uploaded.url })
+                .eq('id', orgId)
+            : { error: null };
+        if (!uploaded || pictureError) {
+            if (pictureError) {
+                console.error(
+                    '[create-organization] picture failed',
+                    pictureError,
+                );
+                await supabaseAdmin.storage.from('public-files')
+                    .remove([uploaded!.path]);
+            }
+            await undo();
+            return new Response(
+                `Error uploading the picture. Try again, or contact ${IT_EMAIL}.`,
+                { status: 500 },
+            );
+        }
     }
 
     // success!
     return new Response(
         JSON.stringify({
-            id: orgData[0].id,
+            id: orgId,
         }),
         {
             headers: { 'Content-Type': 'application/json' },

@@ -1,0 +1,33 @@
+name: CI
+
+# master deploys straight to production, so make this a required check.
+on:
+    pull_request:
+    push:
+        branches: [master]
+
+permissions:
+    contents: read
+
+concurrency:
+    group: ci-${{ github.ref }}
+    cancel-in-progress: true
+
+jobs:
+    check:
+        runs-on: ubuntu-latest
+        timeout-minutes: 15
+        steps:
+            - uses: actions/checkout@v4
+            - uses: denoland/setup-deno@v2
+              with:
+                  # the version that wrote deno.lock; bump both together
+                  deno-version: 2.9.7
+            - name: Format
+              run: deno fmt --check
+            - name: Lint
+              run: deno lint
+            - name: Type check
+              run: deno check ./*/index.ts
+            - name: Test
+              run: deno test --allow-env

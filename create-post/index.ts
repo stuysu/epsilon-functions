@@ -1,7 +1,13 @@
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import corsHeaders, { withCors } from '../_shared/cors.ts';
-import { sendOrgEmail } from '../_shared/utils.ts';
-import { dbErrorStatus, readJson } from '../_shared/http.ts';
+import { withCors } from '../_shared/cors.ts';
+import { getCaller } from '../_shared/auth.ts';
+import { isApprovedClub, isSiteAdmin, sendOrgEmail } from '../_shared/utils.ts';
+import {
+    dbErrorStatus,
+    isId,
+    LIMITS,
+    readJson,
+    textProblem,
+} from '../_shared/http.ts';
 import { markdownToText } from '../_shared/markdown.ts';
 import {
     emailDocument,
@@ -16,41 +22,9 @@ type BodyType = {
 };
 
 Deno.serve(withCors(async (req: Request) => {
-    if (req.method === 'OPTIONS') {
-        return new Response('ok', { headers: corsHeaders });
-    }
-
-    const authHeader = req.headers.get('Authorization')!;
-    const supabaseClient = createClient(
-        Deno.env.get('SUPABASE_URL') ?? '',
-        Deno.env.get('SUPABASE_ANON_KEY') ?? '',
-        { global: { headers: { Authorization: authHeader } } },
-    );
-
-    const jwt = authHeader?.split(' ')[1];
-    const { data: userData } = await supabaseClient.auth.getUser(jwt);
-    const user = userData.user;
-
-    /* Failed to fetch supabase user */
-    if (!user) {
-        return new Response('Failed to fetch user.', { status: 401 });
-    }
-
-    /* check if user is a verified user. Verified user = the userdata that the site uses */
-    const { data: verifiedUsers, error: verifiedUsersError } =
-        await supabaseClient.from('users')
-            .select('*')
-            .eq('email', user.email);
-
-    if (verifiedUsersError) {
-        return new Response('Failed to fetch users associated email.', {
-            status: 500,
-        });
-    }
-
-    if (!verifiedUsers || !verifiedUsers.length) {
-        return new Response('User is unauthorized.', { status: 401 });
-    }
+    const caller = await getCaller(req);
+    if (caller instanceof Response) return caller;
+    const { client: supabaseClient, authUser: user } = caller;
 
     const bodyJson = await readJson(req);
     if (!bodyJson) {
@@ -64,6 +38,27 @@ Deno.serve(withCors(async (req: Request) => {
 
     if (!body.organization_id || !body.title || !body.description) {
         return new Response('Missing field', { status: 400 });
+    }
+    if (!isId(body.organization_id)) {
+        return new Response('Invalid organization.', { status: 400 });
+    }
+    const textError = textProblem(body.title, 'Post title', LIMITS.postTitle) ??
+        textProblem(
+            body.description,
+            'Post description',
+            LIMITS.postDescription,
+        );
+    if (textError) return new Response(textError, { status: 400 });
+
+    /* RLS refuses these too; this says why */
+    const approved = await isApprovedClub(body.organization_id);
+    if (approved === null) {
+        return new Response('Failed to check the Activity.', { status: 500 });
+    }
+    if (!approved && !(await isSiteAdmin(user.email))) {
+        return new Response('Only approved Activities can post.', {
+            status: 403,
+        });
     }
 
     /* create post */
@@ -86,14 +81,19 @@ Deno.serve(withCors(async (req: Request) => {
         const emailText = `${body.title}\n\n${description}`;
         const emailSubject = `${body.title} | {ORG_NAME}`;
         const emailHtml = emailDocument(
-            emailTitle(String(body.title)) +
-                markdownToHtml(body.description, String(body.title)),
+            emailTitle(body.title) +
+                markdownToHtml(body.description, body.title),
             { title: emailSubject, preview: description },
         );
-        await sendOrgEmail(body.organization_id, emailSubject, {
+        const sent = await sendOrgEmail(body.organization_id, emailSubject, {
             text: emailText,
             html: emailHtml,
         });
+        if (!sent) {
+            console.error(
+                `[create-post] email failed for post ${postData[0].id}`,
+            );
+        }
     }
 
     return new Response(

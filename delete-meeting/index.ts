@@ -1,56 +1,20 @@
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import corsHeaders, { withCors } from '../_shared/cors.ts';
+import { withCors } from '../_shared/cors.ts';
 import { isSiteAdmin, sendOrgEmail } from '../_shared/utils.ts';
 import supabaseAdmin from '../_shared/supabaseAdmin.ts';
-
-import { datetime } from 'https://deno.land/x/ptera/mod.ts';
-import { footer } from '../_shared/strings.ts';
+import { getCaller } from '../_shared/auth.ts';
+import { meetingEmailText } from '../_shared/emails.ts';
+import { isId, readJson } from '../_shared/http.ts';
 
 type BodyType = {
     id: number;
 };
 
-const isId = (v: unknown): v is number =>
-    Number.isInteger(v) && (v as number) > 0;
-
 Deno.serve(withCors(async (req: Request) => {
-    if (req.method === 'OPTIONS') {
-        return new Response('ok', { headers: corsHeaders });
-    }
+    const caller = await getCaller(req);
+    if (caller instanceof Response) return caller;
+    const { client: supabaseClient, authUser: user } = caller;
 
-    const authHeader = req.headers.get('Authorization') ?? '';
-    const supabaseClient = createClient(
-        Deno.env.get('SUPABASE_URL') ?? '',
-        Deno.env.get('SUPABASE_ANON_KEY') ?? '',
-        { global: { headers: { Authorization: authHeader } } },
-    );
-
-    const jwt = authHeader.split(' ')[1];
-    const { data: userData } = await supabaseClient.auth.getUser(jwt);
-    const user = userData?.user;
-
-    /* Failed to fetch supabase user */
-    if (!user) {
-        return new Response('Failed to fetch user.', { status: 401 });
-    }
-
-    /* check if user is a verified user. Verified user = the userdata that the site uses */
-    const { data: verifiedUsers, error: verifiedUsersError } =
-        await supabaseClient.from('users')
-            .select('*')
-            .eq('email', user.email);
-
-    if (verifiedUsersError) {
-        return new Response('Failed to fetch users associated email.', {
-            status: 500,
-        });
-    }
-
-    if (!verifiedUsers || !verifiedUsers.length) {
-        return new Response('User is unauthorized.', { status: 401 });
-    }
-
-    const bodyJson = await req.json().catch(() => null);
+    const bodyJson = await readJson(req);
     if (!bodyJson || typeof bodyJson !== 'object' || !isId(bodyJson.id)) {
         return new Response('Missing or invalid field: id', { status: 400 });
     }
@@ -93,8 +57,17 @@ Deno.serve(withCors(async (req: Request) => {
         return new Response('Error checking permissions.', { status: 500 });
     }
 
-    if (!orgAdminRows?.length && !(await isSiteAdmin(user.email))) {
+    const siteAdmin = await isSiteAdmin(user.email);
+    if (!orgAdminRows?.length && !siteAdmin) {
         return new Response('Permission denied.', { status: 403 });
+    }
+
+    /* ended meetings keep their attendance (mirrors RLS) */
+    if (!siteAdmin && new Date(oldMeetingData[0].end_time) <= new Date()) {
+        return new Response(
+            "This meeting has already ended, so it can't be deleted.",
+            { status: 403 },
+        );
     }
 
     /* attempt to delete meeting and notify members */
@@ -112,30 +85,20 @@ Deno.serve(withCors(async (req: Request) => {
         return new Response('Permission denied.', { status: 403 });
     }
 
-    /* notify members */
     /* email all members of organization */
-
-    const startTime = datetime(oldMeetingData[0].start_time)
-        .toZonedTime('America/New_York').format('MMMM d, YYYY, h:mm a');
-    const endTime = datetime(oldMeetingData[0].end_time).toZonedTime(
-        'America/New_York',
-    ).format('MMMM d, YYYY, h:mm a');
-
-    const emailText =
-        `You are receiving this email because you are a member of {ORG_NAME}.
-This email is to let you know that the meeting listed below is *CANCELED*
-Title: ${oldMeetingData[0].title}
-Description: ${oldMeetingData[0].description}
-Start Date: ${startTime} EST
-End Date: ${endTime} EST
-Room: ${oldMeetingData[0].rooms?.name || 'Virtual'}
-Advisor: ${oldMeetingData[0].advisor || 'None'}` + footer;
+    const emailText = meetingEmailText(
+        'This email is to let you know that the meeting listed below is *CANCELED*',
+        oldMeetingData[0],
+    );
 
     const emailSubject = `{ORG_NAME} canceled a meeting | Epsilon`;
 
     const oldOrgId = oldMeetingData[0].organization_id;
-    if (bodyJson.silent !== true) {
-        await sendOrgEmail(oldOrgId, emailSubject, emailText);
+    if (
+        bodyJson.silent !== true &&
+        !await sendOrgEmail(oldOrgId, emailSubject, emailText)
+    ) {
+        console.error(`[delete-meeting] email failed for meeting ${body.id}`);
     }
 
     return new Response(

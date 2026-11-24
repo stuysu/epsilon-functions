@@ -1,18 +1,14 @@
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import corsHeaders, { withCors } from '../_shared/cors.ts';
-
-import { datetime } from 'https://deno.land/x/ptera/mod.ts';
-import { dbErrorStatus, readJson } from '../_shared/http.ts';
+import { createClient } from '@supabase/supabase-js';
+import { withCors } from '../_shared/cors.ts';
+import { newYorkTimestamp } from '../_shared/time.ts';
+import { dbErrorStatus, isId, readJson } from '../_shared/http.ts';
+import { logAdminAction } from '../_shared/adminLog.ts';
 
 type BodyType = {
     message_id: number;
 };
 
 Deno.serve(withCors(async (req: Request) => {
-    if (req.method === 'OPTIONS') {
-        return new Response('ok', { headers: corsHeaders });
-    }
-
     const authHeader = req.headers.get('Authorization')!;
 
     const supabaseClient = createClient(
@@ -36,7 +32,10 @@ Deno.serve(withCors(async (req: Request) => {
         .eq('users.email', user.email);
 
     if (permissionsError) {
-        console.log(permissionsError);
+        console.error(
+            '[valentines] permissions lookup failed',
+            permissionsError.code,
+        );
         return new Response(`Failed to fetch user id.`, {
             status: 500,
         });
@@ -68,6 +67,9 @@ Deno.serve(withCors(async (req: Request) => {
     if (!body.message_id) {
         return new Response('No message id provided.', { status: 400 });
     }
+    if (!isId(body.message_id)) {
+        return new Response('Invalid message id.', { status: 400 });
+    }
 
     const { data: messageData, error: messageDataError } = await supabaseClient
         .from('valentinesmessages')
@@ -85,7 +87,8 @@ Deno.serve(withCors(async (req: Request) => {
         return new Response('Letter already approved!', { status: 400 });
     }
 
-    const currentTime = datetime().toZonedTime('America/New_York').toISO();
+    /* verified_at has no zone and holds New York time */
+    const currentTime = newYorkTimestamp(new Date());
 
     const { error: messageUpdateError } = await supabaseClient
         .from('valentinesmessages')
@@ -97,11 +100,23 @@ Deno.serve(withCors(async (req: Request) => {
         .eq('id', body.message_id);
 
     if (messageUpdateError) {
-        console.log(messageUpdateError);
+        console.error(
+            '[valentines_approve] update failed',
+            messageUpdateError.code,
+        );
         return new Response('Failed to update message', {
             status: 500,
         });
     }
+
+    await logAdminAction(
+        { id: (permissions[0].users as unknown as { id: number }).id },
+        {
+            action: 'approve_valentine',
+            targetType: 'valentine',
+            targetId: body.message_id,
+        },
+    );
 
     return new Response(
         JSON.stringify({}),

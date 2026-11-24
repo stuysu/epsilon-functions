@@ -69,7 +69,29 @@ const RULES: { [field: string]: Rule } = {
 
 const COMMITMENT_LEVELS = ['NONE', 'LOW', 'MEDIUM', 'HIGH'];
 const MAX_TAGS = 3;
+/* kept in sync with ORG_TAGS in the site's src/utils/OrgRequirements.ts */
+const ORG_TAGS = [
+    'Arts & Crafts',
+    'Academic & Professional',
+    'Club Sports & Recreational Games',
+    'Community Service & Volunteering',
+    'Cultural & Religious',
+    'Music',
+    'Public Speaking',
+    'STEM',
+    'Student Support & Government',
+    'Hobby & Special Interest',
+    'Publication',
+];
 const MAX_KEYWORDS = 3;
+export const WEEKDAYS = [
+    'MONDAY',
+    'TUESDAY',
+    'WEDNESDAY',
+    'THURSDAY',
+    'FRIDAY',
+];
+const MAX_KEYWORD_LENGTH = 50;
 
 const stripWhitespace = (value: string) =>
     value.replace(/[ \t]+$/gm, '').trim();
@@ -207,10 +229,13 @@ export const DIRECT_CHARTER_FIELDS = [
 const countWords = (value: string) =>
     value.trim() ? value.trim().split(/\s+/).length : 0;
 
-export const cleanCharter = <T extends { [field: string]: any }>(
+// deno-lint-ignore no-explicit-any
+type Fields = { [field: string]: any };
+
+export const cleanCharter = <T extends Fields>(
     fields: T,
 ): T => {
-    const cleaned: { [field: string]: any } = { ...fields };
+    const cleaned: Fields = { ...fields };
 
     for (const [field, value] of Object.entries(cleaned)) {
         if (typeof value === 'string') {
@@ -238,7 +263,7 @@ export const cleanCharter = <T extends { [field: string]: any }>(
 };
 
 export const validateCharter = (
-    fields: { [field: string]: any },
+    fields: Fields,
     requireAll: boolean,
 ) => {
     const problems: string[] = [];
@@ -310,19 +335,41 @@ export const validateCharter = (
     if (fields.tags !== undefined && fields.tags !== null) {
         if (!Array.isArray(fields.tags) || fields.tags.length > MAX_TAGS) {
             problems.push(`Select at most ${MAX_TAGS} tags.`);
+        } else if (
+            !fields.tags.every((tag: unknown) =>
+                typeof tag === 'string' && ORG_TAGS.includes(tag)
+            )
+        ) {
+            problems.push('Pick tags from the list.');
         }
     }
 
-    if (typeof fields.keywords === 'string' && fields.keywords) {
+    if (
+        fields.keywords !== undefined && fields.keywords !== null &&
+        typeof fields.keywords !== 'string'
+    ) {
+        problems.push('Keywords must be text.');
+    } else if (typeof fields.keywords === 'string' && fields.keywords) {
         const keywords = fields.keywords.split(',').filter(Boolean);
         if (keywords.length > MAX_KEYWORDS) {
             problems.push(`Use at most ${MAX_KEYWORDS} keywords.`);
+        }
+        if (keywords.some((k: string) => k.length > MAX_KEYWORD_LENGTH)) {
+            problems.push(
+                `Each keyword must be at most ${MAX_KEYWORD_LENGTH} characters.`,
+            );
         }
     }
 
     if (fields.meeting_days !== undefined && fields.meeting_days !== null) {
         if (!Array.isArray(fields.meeting_days)) {
             problems.push('Meeting days must be a list.');
+        } else if (
+            !fields.meeting_days.every((day: unknown) =>
+                typeof day === 'string' && WEEKDAYS.includes(day)
+            )
+        ) {
+            problems.push('Pick meeting days from Monday to Friday.');
         } else if (requireAll && fields.meeting_days.length === 0) {
             problems.push('Select at least one meeting day.');
         }
@@ -359,4 +406,18 @@ export const RESERVED_PATHS = [
     'preferences',
     'profile',
     'vote',
+    'invites',
 ];
+
+/* A picture the site uploaded for this club: <base>/storage/v1/object/public/
+   public-files/org-pictures/<org id>/<file>. */
+export const isClubPictureUrl = (
+    orgId: number,
+    url: string,
+    base: string,
+) => {
+    const folder =
+        `${base}/storage/v1/object/public/public-files/org-pictures/${orgId}/`;
+    return url.startsWith(folder) &&
+        /^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(url.slice(folder.length));
+};
