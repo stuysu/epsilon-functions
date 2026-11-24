@@ -18,7 +18,7 @@ jobs:
         runs-on: ubuntu-latest
         timeout-minutes: 15
         steps:
-            - uses: actions/checkout@v4
+            - uses: actions/checkout@v7
             - uses: denoland/setup-deno@v2
               with:
                   # the version that wrote deno.lock; bump both together
