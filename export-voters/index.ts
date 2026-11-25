@@ -1,30 +1,15 @@
 import supabaseAdmin from '../_shared/supabaseAdmin.ts';
-import * as jose from 'jose';
 import { withCors } from '../_shared/cors.ts';
 import { fetchAllRows } from '../_shared/rows.ts';
+import { verifyVoteToken } from '../_shared/voteKey.ts';
 
-/* VOTE_PUBLIC_KEY: the vote site's RS256 key (SPKI PEM); VOTE_JWT_ISSUER and
-   VOTE_JWT_AUDIENCE are checked when set */
-const PUBLIC_KEY = Deno.env.get('VOTE_PUBLIC_KEY')?.replace(/\\n/g, '\n');
-const ISSUER = Deno.env.get('VOTE_JWT_ISSUER') || undefined;
-const AUDIENCE = Deno.env.get('VOTE_JWT_AUDIENCE') || undefined;
-
-type VotePayload = {
-    user?: {
-        adminPrivileges?: boolean;
-        firstName?: string;
-        lastName?: string;
-        email?: string;
-    };
-};
+/* the key is read live; VOTE_PUBLIC_KEY is the fallback when vote is down */
 
 const json = (body: unknown, status = 200) =>
     new Response(JSON.stringify(body), {
         headers: { 'Content-Type': 'application/json' },
         status,
     });
-
-let key: CryptoKey | null = null;
 
 Deno.serve(withCors(async (req: Request) => {
     const jwt = req.headers.get('Authorization')?.match(/^Bearer (\S+)$/)
@@ -36,24 +21,14 @@ Deno.serve(withCors(async (req: Request) => {
         }, 401);
     }
 
-    if (!PUBLIC_KEY) {
-        console.error('[export-voters] VOTE_PUBLIC_KEY is not set');
-        return json({ success: false, error: 'Not configured' }, 503);
-    }
-
-    let user: VotePayload['user'];
-    try {
-        key ??= await jose.importSPKI(PUBLIC_KEY, 'RS256');
-        const { payload } = await jose.jwtVerify<VotePayload>(jwt, key, {
-            algorithms: ['RS256'],
-            issuer: ISSUER,
-            audience: AUDIENCE,
-        });
-        user = payload.user;
-    } catch (err) {
-        console.error('[export-voters] rejected token', err);
+    const verified = await verifyVoteToken(jwt, {
+        fallback: Deno.env.get('VOTE_PUBLIC_KEY'),
+    });
+    if (!verified.ok) {
+        console.error('[export-voters] rejected token', verified.error);
         return json({ success: false, error: 'Invalid token' }, 401);
     }
+    const user = verified.payload.user;
 
     if (!user?.adminPrivileges) {
         return json({
