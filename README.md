@@ -62,8 +62,7 @@ the `SUPABASE_*` ones itself.
 | `SUPABASE_JWKS`                                           | `main/` router: optional JWKS (JSON) used instead of `JWT_SECRET`                                 |
 | `VERIFY_JWT`                                              | `main/` router: `true` to reject requests without a valid JWT                                     |
 | `NOTIFICATION_WEBHOOK`                                    | Optional, `export-voters`: Discord-style webhook told who exported                                |
-| `VOTE_PUBLIC_KEY`                                         | `export-voters`: vote.stuysu.org's RS256 public key (PEM); the function refuses to run without it |
-| `VOTE_JWT_ISSUER`, `VOTE_JWT_AUDIENCE`                    | Optional, `export-voters`: expected `iss` / `aud`, checked when set                               |
+| `VOTE_PUBLIC_KEY`                                         | `export-voters`: optional fallback RS256 public key (PEM) used if vote.stuysu.org cannot be read. |
 
 ## Dependencies
 
