@@ -12,8 +12,9 @@ const json = (body: unknown, status = 200) =>
     });
 
 Deno.serve(withCors(async (req: Request) => {
-    const jwt = req.headers.get('Authorization')?.match(/^Bearer (\S+)$/)
-        ?.[1];
+    // "Bearer <token>" in any case, or a bare token, as before #50
+    const jwt = req.headers.get('Authorization')?.trim()
+        .replace(/^bearer\s+/i, '');
     if (!jwt) {
         return json({
             success: false,
